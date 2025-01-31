@@ -33,10 +33,12 @@ def pols(
     R: bool = False,
     S: bool = False,
     sort: Literal["size", "time", "version", "extension"] | None = None,
-    time: Literal["atime", "access", "use", "ctime", "status", "birth", "creation"]
-    | None = None,
-    time_style: Literal["full-iso", "long-iso", "iso", "locale"]
-    | TimeFormat = "locale",
+    time: (
+        Literal["atime", "access", "use", "ctime", "status", "birth", "creation"] | None
+    ) = None,
+    time_style: (
+        Literal["full-iso", "long-iso", "iso", "locale"] | TimeFormat
+    ) = "locale",
     u: bool = False,
     U: bool = False,
     v: bool = False,
@@ -72,7 +74,7 @@ def pols(
       [ ] l: Use a long listing format.
       [ ] L: When showing file information for a symbolic link, show information for the
          file the link references rather than for the link itself.
-      [ ] p: Append `/` indicator to directories.
+      [x] p: Append `/` indicator to directories.
       [ ] r: Reverse order while sorting.
       [ ] R: List directories recursively.
       [ ] S: Sort by file size, largest first.
@@ -120,13 +122,6 @@ def pols(
 
     import polars as pl
 
-    files = (
-        pl.DataFrame(
-            [{"name": p.name, "mtime": p.stat().st_mtime} for p in pl_paths],
-            schema={"name": str, "mtime": pl.Float64},
-        )
-        .with_columns(pl.col("mtime").mul(1000).cast(pl.Datetime("ms")))
-        .sort("mtime")
-    )
+    files = pl.DataFrame([{"name": p.name} for p in pl_paths])
     # files.filter(pl.col("mtime") > pl.lit("2025-01-31").str.to_date())
     return files

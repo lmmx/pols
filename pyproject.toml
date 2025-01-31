@@ -21,6 +21,6 @@ build-backend = "pdm.backend"
 [dependency-groups]
 dev = [
     "freezegun>=1.5.1",
-    "inline-snapshot>=0.19.3",
+    "inline-snapshot[black]>=0.19.3",
     "pytest>=8.3.4",
 ]
