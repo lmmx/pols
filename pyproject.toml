@@ -7,11 +7,20 @@ authors = [
     { name = "Louis Maddox", email = "louismmx@gmail.com" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "argh>=0.31.3",
+]
 
 [project.scripts]
-pls = "pls:main"
+pols = "pols:cli.cli"
 
 [build-system]
 requires = ["pdm-backend"]
 build-backend = "pdm.backend"
+
+[dependency-groups]
+dev = [
+    "freezegun>=1.5.1",
+    "inline-snapshot>=0.19.3",
+    "pytest>=8.3.4",
+]
