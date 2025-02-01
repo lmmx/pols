@@ -207,7 +207,7 @@ def pols(
             print(f"Got no files from {path_set} due to {e}")
             raise
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
-        print(path_set_result.to_dicts())
+        # print(path_set_result.to_dicts())
         results.append(path_set_result)
     return results
 
