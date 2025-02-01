@@ -1,5 +1,5 @@
 [project]
-name = "pols"
+name = "polars-ls"
 version = "0.1.0"
 description = "List directory contents as Polars DataFrames"
 readme = "README.md"

@@ -7,7 +7,7 @@ List directory contents as Polars DataFrames.
 - Requires installation of either `polars` or `polars-lts-cpu`.
 
 ```bash
-pip install pols
+pip install polars-ls
 ```
 
 ## User guidance
