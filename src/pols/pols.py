@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from functools import partial, reduce
 from pathlib import Path
+from sys import stdout
 from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
 import polars as pl
@@ -53,6 +54,8 @@ def pols(
     # Rest are additions to the ls flags
     keep_path: bool = False,
     keep_fs_metadata: bool = False,
+    print_to: bool = stdout,
+    to_dicts: bool = False,
 ) -> pl.DataFrame:
     """
     List the contents of a directory as Polars DataFrame.
@@ -105,6 +108,8 @@ def pols(
       [ ] t: Sort by time, newest first
       [x] keep_path: Keep a path column with the Pathlib path object.
       [x] keep_fs_metadata: Keep filesystem metadata booleans: `is_dir`, `is_symlink`.
+      [x] print_to: Where to print to, by default prints to STDOUT, `False` to turn off.
+      [x] to_dicts: Return the result as dicts.
 
         >>> pls()
         shape: (77, 2)
@@ -208,8 +213,16 @@ def pols(
             raise
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
         # print(path_set_result.to_dicts())
-        results.append(path_set_result)
-    return results
+        results.append(
+            {dir_root.name if not dir_root.name else str(dir_root): path_set_result}
+        )
+    if print_to:
+        for result in results:
+            [(source, paths)] = result.items()
+            if source:
+                print(f"{source}:", file=print_to)
+            print(paths, file=print_to)
+    return results if to_dicts else None
 
 
 def add_path_metadata(files):
