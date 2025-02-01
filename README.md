@@ -52,6 +52,39 @@ src:
 pols
 ```
 
+To the same effect, the results are grouped in a list of dicts, where the key is the source
+(either the empty string for the individual files, or the directory root). This allows an identical
+printout style to `ls`:
+
+```bash
+$ ls -A ../.py*
+../.python-version
+
+../.pytest_cache:
+CACHEDIR.TAG  .gitignore  README.md  v
+$ pols -A ../.py*
+shape: (1, 1)
+┌────────────────────┐
+│ name               │
+│ ---                │
+│ str                │
+╞════════════════════╡
+│ ../.python-version │
+└────────────────────┘
+../.pytest_cache:
+shape: (4, 1)
+┌──────────────┐
+│ name         │
+│ ---          │
+│ str          │
+╞══════════════╡
+│ README.md    │
+│ v            │
+│ .gitignore   │
+│ CACHEDIR.TAG │
+└──────────────┘
+```
+
 ### Globs (Kleene stars) go 1 level deep
 
 You can use `**` in `ls` and `pols` but in both cases you only actually get one level, unlike other
