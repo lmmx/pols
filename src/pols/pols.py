@@ -123,45 +123,61 @@ def pols(
     TODO:
     - Handle `*`
     """
-    # Expand out any directories once, and coerce all to Pathlib paths
-    pl_paths: list[Path] = list(
-        dict.fromkeys(
-            elem
-            for path in (paths or (".",))  # Replace 0-tuple by 1-tuple of cwd `.`
-            for elem in (
-                [
-                    *Path(path).iterdir(),
-                    Path(path) / ".",
-                    Path(path) / "..",
-                ]
-                if Path(path).is_dir()
-                else (Path(path),)
-            )
-        )
-    )
+    drop_cols = [
+        *([] if keep_path else ["path"]),
+        *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
+        "rel_to",
+    ]
 
-    p_ser = pl.Series("path", pl_paths)
-    files = p_ser.to_frame().with_columns(
-        name=pl.col("path").map_elements(
-            lambda p: (p.name or "."), return_dtype=pl.String
-        )
-    )
+    # Operate on files
+    individual_files = []
+    dirs_to_scan = []
+    for path in map(Path, paths or (".",)):
+        if path.is_file():
+            individual_files.append(path)
+        elif path.is_dir():
+            dirs_to_scan.append(path)
+
     pipes = [
         # Filter out anything known from name first, before more metadata gets added
         *([] if a else [*([remove_hidden_rel_dirs] if A else [remove_hidden_files])]),
         # Add symlink and directory bools from Path methods
         add_path_metadata,
+        *([append_slash] if p else []),
     ]
-    if p:
-        pipes += append_slash
 
-    drop_cols = [
-        *([] if keep_path else ["path"]),
-        *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
-    ]
-    result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
-    print(result.to_dicts())
-    return result
+    results = []
+    for idx, path_set in enumerate((individual_files, *dirs_to_scan)):
+        is_dir = idx > 0
+        if not path_set:
+            assert idx == 0  # This should only be when no files
+            continue
+        if is_dir:
+            dir_root = path_set
+            path_set = [
+                dir_root,
+                dir_root / "..",
+                *(f.relative_to(dir_root) for f in path_set.iterdir()),
+            ]
+        else:
+            dir_root = Path("")
+            subpaths = path_set
+        files = pl.DataFrame(
+            {
+                "path": path,
+                "name": (
+                    path
+                    if path.is_absolute()
+                    else path.relative_to(dir_root).name or "."
+                ),
+                "rel_to": dir_root,
+            }
+            for path in path_set
+        )
+        path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
+        print(path_set_result.to_dicts())
+        results.append(path_set_result)
+    return results
 
 
 def add_path_metadata(files):
