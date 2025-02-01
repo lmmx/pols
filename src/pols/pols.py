@@ -6,8 +6,6 @@ from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
 import polars as pl
 
-from .features.a import remove_hidden_files
-from .features.A import remove_hidden_rel_dirs
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
 
@@ -122,6 +120,7 @@ def pols(
     """
     # Handle short codes
     hide = hide or I
+    hidden_files_allowed = A or a
 
     drop_cols = [
         *([] if keep_path else ["path"]),
@@ -164,8 +163,6 @@ def pols(
         raise FileNotFoundError(f"No such file:")
 
     pipes = [
-        # Filter out anything known from name first, before more metadata gets added
-        *([] if a else [*([remove_hidden_rel_dirs] if A else [remove_hidden_files])]),
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
         add_path_metadata,
@@ -181,9 +178,12 @@ def pols(
         if is_dir:
             dir_root = path_set
             path_set = [
-                Path("."),
-                Path(".."),
-                *(f.relative_to(dir_root) for f in path_set.iterdir()),
+                *([Path("."), Path("..")] if a and not A else []),
+                *(
+                    f.relative_to(dir_root)
+                    for f in path_set.iterdir()
+                    if (hidden_files_allowed or not f.name.startswith("."))
+                ),
             ]
         else:
             dir_root = Path()
