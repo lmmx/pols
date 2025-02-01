@@ -10,6 +10,48 @@ List directory contents as Polars DataFrames.
 pip install pols
 ```
 
+## User guidance
+
+### Names are relative
+
+Counter to the typical `pathlib.Path` notion of a name, the names in `ls` and hence `pols` are
+more relative names: hence `.` is a valid name (if you try accessing the `.name` attribute of a
+pathlib Path, it'll come back as "").
+
+```python
+>>> cwd = Path.cwd()
+>>> cwd / "."
+PosixPath('/home/louis/dev/pols')
+>>> cwd / ".."
+PosixPath('/home/louis/dev/pols/..')
+>>> (cwd / ".").name
+'pols'
+>>> (cwd / "..").name
+'..'
+>>> Path(".").name
+''
+```
+
+### Individual files and directories don't mix
+
+The way `ls` works is that individual files get collected in one 'set' of results and directories
+in another, and never the two shall meet. If you `ls` a few files and one or more directories,
+you'll get one set of reults with all the files and one set for each of the folders. This is
+because of the previous point: the names shown are relative to the directory 'root' (if you're
+specifying files individually, the current working directory is the assumed directory 'root', and
+of course absolute paths always show as absolute so their 'root' is shown too).
+
+(Even if the individual files are in different folders: it's because merging files with
+different roots whose relative names are being shown would be invalid)
+
+```bash
+$ ls README.md src src/pols/__init__.py 
+README.md  src/pols/__init__.py
+
+src:
+pols
+```
+
 ## Differences from `ls`
 
 The design is intended to keep as closely as possible to GNU coreutils
