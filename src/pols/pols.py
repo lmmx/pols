@@ -1,7 +1,14 @@
 from __future__ import annotations
 
+from functools import reduce
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
+
+import polars as pl
+
+from .features.a import remove_hidden_files
+from .features.A import remove_hidden_rel_dirs
+from .features.p import append_slash
 
 if TYPE_CHECKING:
     import polars as pl
@@ -44,13 +51,16 @@ def pols(
     v: bool = False,
     X: bool = False,
     t: bool = False,
+    # Rest are additions to the ls flags
+    keep_path: bool = False,
+    keep_fs_metadata: bool = False,
 ) -> pl.DataFrame:
     """
     List the contents of a directory as Polars DataFrame.
 
     Args:
-      [ ] a: Do not ignore entries starting with `.`.
-      [ ] A: Do not list implied `.` and `..`.
+      [x] a: Do not ignore entries starting with `.`.
+      [x] A: Do not list implied `.` and `..`.
       [ ] author: With `l`, print the author of each file.
       [ ] c: With `l` and `t` sort by, and show, ctime (time of last modification of file
          status information);
@@ -95,6 +105,8 @@ def pols(
          (so "file2" comes after "file10" etc.).
       [ ] X: Sort alphabetically by entry extension.
       [ ] t: Sort by time, newest first
+      [x] keep_path: Keep a path column with the Pathlib path object.
+      [x] keep_fs_metadata: Keep filesystem metadata booleans: `is_dir`, `is_symlink`.
 
         >>> pls()
         shape: (77, 2)
@@ -115,13 +127,46 @@ def pols(
     pl_paths: list[Path] = list(
         dict.fromkeys(
             elem
-            for path in (paths or ("",))  # Replace 0-tuple by 1-tuple of empty str
-            for elem in (Path(path).iterdir() if Path(path).is_dir() else (Path(path),))
+            for path in (paths or (".",))  # Replace 0-tuple by 1-tuple of cwd `.`
+            for elem in (
+                [
+                    *Path(path).iterdir(),
+                    Path(path) / ".",
+                    Path(path) / "..",
+                ]
+                if Path(path).is_dir()
+                else (Path(path),)
+            )
         )
     )
 
-    import polars as pl
+    p_ser = pl.Series("path", pl_paths)
+    files = p_ser.to_frame().with_columns(
+        name=pl.col("path").map_elements(
+            lambda p: (p.name or "."), return_dtype=pl.String
+        )
+    )
+    pipes = [
+        # Filter out anything known from name first, before more metadata gets added
+        *([] if a else [*([remove_hidden_rel_dirs] if A else [remove_hidden_files])]),
+        # Add symlink and directory bools from Path methods
+        add_path_metadata,
+    ]
+    if p:
+        pipes += append_slash
 
-    files = pl.DataFrame([{"name": p.name} for p in pl_paths])
-    # files.filter(pl.col("mtime") > pl.lit("2025-01-31").str.to_date())
-    return files
+    drop_cols = [
+        *([] if keep_path else ["path"]),
+        *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
+    ]
+    result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
+    print(result.to_dicts())
+    return result
+
+
+def add_path_metadata(files):
+    pth = pl.col("path")
+    return files.with_columns(
+        is_dir=pth.map_elements(lambda p: p.is_dir(), return_dtype=pl.Boolean),
+        is_symlink=pth.map_elements(lambda p: p.is_symlink(), return_dtype=pl.Boolean),
+    )
