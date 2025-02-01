@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from functools import reduce
+from functools import partial, reduce
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
@@ -8,6 +8,7 @@ import polars as pl
 
 from .features.a import remove_hidden_files
 from .features.A import remove_hidden_rel_dirs
+from .features.hide import filter_out_pattern
 from .features.p import append_slash
 
 if TYPE_CHECKING:
@@ -77,10 +78,9 @@ def pols(
       [ ] H: Follow symbolic links listed on the command line.
       [ ] dereference_command_line_symlink_to_dir: Follow each command line symbolic link
                                                that points to a directory.
-      [ ] hide: Do not list implied entries matching shell pattern (overridden by `a` or
-            `A`).
+      [x] hide: Do not list implied entries matching shell pattern.
       [ ] i: Print the index number of each file.
-      [ ] I: Do not list implied entries matching shell pattern.
+      [x] I: Do not list implied entries matching shell pattern. Short code for `hide`.
       [ ] l: Use a long listing format.
       [ ] L: When showing file information for a symbolic link, show information for the
          file the link references rather than for the link itself.
@@ -119,28 +119,54 @@ def pols(
         │ …             ┆ …                   │
         │ another.txt   ┆ 2025-01-31 13:44:43 │
         └───────────────┴─────────────────────┘
-
-    TODO:
-    - Handle `*`
     """
+    # Handle short codes
+    hide = hide or I
+
     drop_cols = [
         *([] if keep_path else ["path"]),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
         "rel_to",
     ]
 
-    # Operate on files
+    # Identify the files to operate on
     individual_files = []
     dirs_to_scan = []
-    for path in map(Path, paths or (".",)):
+    nonexistent = []
+    unexpanded_paths = list(map(Path, paths or (".",)))
+    expanded_paths = []
+
+    for path in unexpanded_paths:
+        # Expand kleene star
+        if any("*" in p for p in path.parts):
+            # Remove double kleene stars, we don't support recursive **
+            if any("**" in p for p in path.parts):
+                path = Path(*[re.sub(r"\*+", "*", part) for part in p.parts])
+
+            glob_base = Path(*[part for part in path.parts if "*" not in part])
+            glob_subpath = path.relative_to(glob_base)
+            expanded_paths.extend(*glob_base.glob(glob_subpath))
+        else:
+            expanded_paths.append(path)
+
+    for path in expanded_paths:
         if path.is_file():
             individual_files.append(path)
         elif path.is_dir():
             dirs_to_scan.append(path)
+        elif not path.exists():
+            nonexistent.append(
+                FileNotFoundError(
+                    f"pols: cannot access 'path': No such file or directory"
+                )
+            )
+    if nonexistent:
+        raise FileNotFoundError(f"No such file:")
 
     pipes = [
         # Filter out anything known from name first, before more metadata gets added
         *([] if a else [*([remove_hidden_rel_dirs] if A else [remove_hidden_files])]),
+        *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
         add_path_metadata,
         *([append_slash] if p else []),
@@ -155,25 +181,31 @@ def pols(
         if is_dir:
             dir_root = path_set
             path_set = [
-                dir_root,
-                dir_root / "..",
+                Path("."),
+                Path(".."),
                 *(f.relative_to(dir_root) for f in path_set.iterdir()),
             ]
         else:
-            dir_root = Path("")
+            dir_root = Path()
             subpaths = path_set
-        files = pl.DataFrame(
-            {
-                "path": path,
-                "name": (
-                    path
-                    if path.is_absolute()
-                    else path.relative_to(dir_root).name or "."
-                ),
-                "rel_to": dir_root,
-            }
-            for path in path_set
-        )
+        # e.g. `pols src` would give dir_root=src to `.`, `..`, and all in `.iterdir()`
+        try:
+            file_entries = []
+            for path in path_set:
+                entry = {
+                    "path": path,
+                    "name": str(
+                        path
+                        if path.is_absolute() or is_dir
+                        else path.absolute().relative_to(dir_root.absolute())
+                    ),
+                    "rel_to": dir_root,
+                }
+                file_entries.append(entry)
+            files = pl.DataFrame(file_entries)
+        except Exception as e:
+            print(f"Got no files from {path_set} due to {e}")
+            raise
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
         print(path_set_result.to_dicts())
         results.append(path_set_result)
