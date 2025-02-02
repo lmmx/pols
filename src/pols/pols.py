@@ -222,7 +222,7 @@ def pols(
     # (unsure if there's a workaround using inspect?)
     sortable = {"sort", "S", "t", "v", "X"}
     # We also need `c` and `u` (which imply `t` sort unless with `l`)
-    if implied_time_sort := (not l) or (t and l):
+    if implied_time_sort := (c or u) and ((not l) or (t and l)):
         sortable = sortable.union({"c", "u"})
         sort_lookup.update({"c": "t", "u": "t"})
     # Take the flags and use their local values (i.e. parsed param values)
