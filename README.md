@@ -4,11 +4,15 @@ List directory contents as Polars DataFrames.
 
 ## Installation
 
-- Requires installation of either `polars` or `polars-lts-cpu`.
+The `polars-ls` package can be installed with either `polars` or `polars-lts-cpu` using the extras
+by those names:
 
 ```bash
-pip install polars-ls
+pip install polars-ls[polars]
+pip install polars-ls[polars-lts-cpu]
 ```
+
+If Polars is already installed, you can simply `pip install polars-ls`.
 
 ## User guidance
 
