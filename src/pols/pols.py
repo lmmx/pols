@@ -180,7 +180,8 @@ def pols(
 
             glob_base = Path(*[part for part in path.parts if "*" not in part])
             glob_subpattern = str(path.relative_to(glob_base))
-            expanded_paths.extend(list(glob_base.glob(glob_subpattern)))
+            globbed_paths = list(glob_base.glob(glob_subpattern))
+            expanded_paths.extend(globbed_paths)
         else:
             expanded_paths.append(path)
 
@@ -327,7 +328,10 @@ def pols(
                     "rel_to": dir_root,
                 }
                 file_entries.append(entry)
-            files = pl.DataFrame(file_entries)
+            files = pl.DataFrame(
+                file_entries,
+                schema={"path": pl.Object, "name": pl.String, "rel_to": pl.Object},
+            )
         except Exception as e:
             failures.extend([ValueError(f"Got no files from {path_set} due to {e}"), e])
             if raise_on_access:
