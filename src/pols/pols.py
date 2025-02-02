@@ -257,12 +257,21 @@ def pols(
             dir_root = path_set
             path_set = [
                 *([Path("."), Path("..")] if a and not A else []),
-                *(
-                    f.relative_to(dir_root)
-                    for f in path_set.iterdir()
-                    if (hidden_files_allowed or not f.name.startswith("."))
-                ),
             ]
+            for path_set_file in dir_root.iterdir():
+                if hidden_files_allowed or not path_set_file.name.startswith("."):
+                    try:
+                        # Just do this to try to trigger an OSError to discard it early
+                        path_set_file.is_file()
+                    except OSError as e:
+                        print(
+                            f"pols: cannot access '{path_set_file}': {e}", file=error_to
+                        )
+                        if raise_on_access:
+                            raise
+                        continue
+                    else:
+                        path_set.append(path_set_file.relative_to(dir_root))
         else:
             dir_root = Path()
             subpaths = path_set
@@ -310,3 +319,6 @@ def add_path_metadata(files):
         is_dir=pth.map_elements(lambda p: p.is_dir(), return_dtype=pl.Boolean),
         is_symlink=pth.map_elements(lambda p: p.is_symlink(), return_dtype=pl.Boolean),
     )
+
+
+# Known bugs: `pols *` in home dir fails, maybe permissions error?
