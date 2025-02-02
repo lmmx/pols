@@ -75,7 +75,7 @@ def pols(
          status information);
          with `l`: show ctime and sort by name;
          otherwise: sort by ctime, newest first.
-      [ ] d: List directories themselves, not their contents.
+      [x] d: List directories themselves, not their contents.
       [ ] full_time: Like `l` with `time_style=full-iso`.
       [ ] group_directories_first: Group directories before files; can be augmented with a
                                `sort` option, but any use of `sort=None` (`U`)
@@ -196,7 +196,10 @@ def pols(
         if is_file:
             individual_files.append(path)
         elif path.is_dir():
-            dirs_to_scan.append(path)
+            if d:
+                individual_files.append(path)
+            else:
+                dirs_to_scan.append(path)
         elif not path.exists():
             nonexistent.append(
                 FileNotFoundError(
