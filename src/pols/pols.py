@@ -57,6 +57,7 @@ def pols(
     keep_fs_metadata: bool = False,
     print_to: TextIO | None = stdout,
     error_to: TextIO | None = stderr,
+    to_dict: bool = False,
     to_dicts: bool = False,
     raise_on_access: bool = False,
     debug: bool = False,
@@ -114,6 +115,9 @@ def pols(
       [x] keep_fs_metadata: Keep filesystem metadata booleans: `is_dir`, `is_symlink`.
       [x] print_to: Where to print to, by default writes to STDOUT, `None` to disable.
       [x] error_to: Where to error to, by default writes to STDERR, `None` to disable.
+      [x] to_dict: Return the result as dict (key is the source: for individual files
+          the source is the current path `"."`, for directory contents it is the parent
+          directory).
       [x] to_dicts: Return the result as dicts.
       [x] raise_on_access: Raise an error if a file cannot be accessed.
 
@@ -129,6 +133,8 @@ def pols(
         │ another.txt   ┆ 2025-01-31 13:44:43 │
         └───────────────┴─────────────────────┘
     """
+    if to_dict and to_dicts:
+        raise ValueError("Please pass only one of `to_dict` and `to_dicts`.")
     # Handle short codes
     hide = hide or I
     hidden_files_allowed = A or a
@@ -310,7 +316,12 @@ def pols(
             print(paths, file=print_to)
             if debug:
                 breakpoint()
-    return results if to_dicts else None
+    if to_dict:
+        return {source: df for res in results for source, df in res.items()}
+    elif to_dicts:
+        return results
+    else:
+        return None
 
 
 def add_path_metadata(files):
