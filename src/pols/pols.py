@@ -155,7 +155,7 @@ def pols(
 
             glob_base = Path(*[part for part in path.parts if "*" not in part])
             glob_subpattern = str(path.relative_to(glob_base))
-            expanded_paths.extend(*glob_base.glob(glob_subpattern))
+            expanded_paths.extend(list(glob_base.glob(glob_subpattern)))
         else:
             expanded_paths.append(path)
 
