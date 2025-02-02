@@ -93,7 +93,7 @@ def pols(
       [ ] L: When showing file information for a symbolic link, show information for the
          file the link references rather than for the link itself.
       [x] p: Append `/` indicator to directories.
-      [ ] r: Reverse order while sorting.
+      [x] r: Reverse order while sorting.
       [ ] R: List directories recursively.
       [ ] S: Sort by file size, largest first.
       [x] sort: sort by WORD instead of name: none (`U`), size (`S`), time (`t`), version
@@ -274,6 +274,8 @@ def pols(
             by=pl.col("name").str.to_lowercase(), maintain_order=True
         )
         sort_pipes.append(lexico_sort)
+    if r and not U:
+        sort_pipes.append(lambda df: df.reverse())
 
     pipes = [
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
