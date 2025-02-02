@@ -73,7 +73,7 @@ def pols(
       [ ] author: With `l`, print the author of each file.
       [x] c: With `l` and `t` sort by, and show, ctime (time of last modification of file
          status information);
-         with `l`: show ctime and  sort  by name;
+         with `l`: show ctime and sort by name;
          otherwise: sort by ctime, newest first.
       [ ] d: List directories themselves, not their contents.
       [ ] full_time: Like `l` with `time_style=full-iso`.
@@ -98,7 +98,7 @@ def pols(
       [ ] S: Sort by file size, largest first.
       [x] sort: sort by WORD instead of name: none (`U`), size (`S`), time (`t`), version
             (`v`), extension (`X`).
-      [ ] time: change  the default of using modification times:
+      [x] time: change  the default of using modification times:
               - access time (`u`): atime, access, use
               - change time (`c`): ctime, status
               - birth time:  birth, creation
@@ -106,10 +106,10 @@ def pols(
             chosen time type (newest first).
       time_style: time/date format with `l`; argument can be full-iso, long-iso, iso,
                   locale, or +FORMAT. FORMAT is interpreted like in `datetime.strftime`.
-      [ ] u: with `l` and `t`: sort by, and show, access time; with `l`: show access time
+      [x] u: with `l` and `t`: sort by, and show, access time; with `l`: show access time
          and sort by name; otherwise: sort by access time, newest first.
-      [ ] U: Do not sort; list entries in directory order.
-      [ ] v: Natural sort of (version) numbers within text, i.e. numeric, non-lexicographic
+      [x] U: Do not sort; list entries in directory order.
+      [x] v: Natural sort of (version) numbers within text, i.e. numeric, non-lexicographic
          (so "file2" comes after "file10" etc.).
       [x] X: Sort alphabetically by entry extension.
       [x] t: Sort by time, newest first
@@ -145,7 +145,18 @@ def pols(
         **{k: "ctime" for k in "ctime status birth creation".split()},
         "mtime": "mtime",
     }
-    time_metric = time_lookup[time]
+    if u:
+        lut_time = "atime"
+    elif c:
+        lut_time = "ctime"
+    else:
+        lut_time = time
+    try:
+        time_metric = time_lookup[lut_time]
+    except KeyError as exc:
+        raise ValueError(
+            f"{time!r} is not a valid time: must be one of {[*time_lookup]}",
+        ) from exc
 
     drop_cols = [
         *([] if keep_path else ["path"]),
@@ -200,14 +211,6 @@ def pols(
 
     sort_pipes = []
     # none (`U`), size (`S`), time (`t`), version (`v`), extension (`X`).
-
-    # Recreate the CLI order, N.B. will not be ordered from Python library call
-    # (unsure if there's a workaround using inspect?)
-    sortable = {"sort", "S", "t", "v", "c", "X"}
-    # Take the flags and use their local values (i.e. parsed param values)
-    sort_order = [k.lstrip("-") for k in argv if k.lstrip("-") in sortable]
-    klocals = locals()
-    sort_sequence = {sort_key: klocals[sort_key] for sort_key in sort_order}
     sort_lookup = {
         "none": "U",
         "size": "S",
@@ -215,6 +218,17 @@ def pols(
         "version": "v",
         "extension": "X",
     }
+    # Recreate the CLI order, N.B. will not be ordered from Python library call
+    # (unsure if there's a workaround using inspect?)
+    sortable = {"sort", "S", "t", "v", "X"}
+    # We also need `c` and `u` (which imply `t` sort unless with `l`)
+    if implied_time_sort := (not l) or (t and l):
+        sortable = sortable.union({"c", "u"})
+        sort_lookup.update({"c": "t", "u": "t"})
+    # Take the flags and use their local values (i.e. parsed param values)
+    sort_order = [k.lstrip("-") for k in argv if k.lstrip("-") in sortable]
+    klocals = locals()
+    sort_sequence = {sort_key: klocals[sort_key] for sort_key in sort_order}
     # If a `--sort` was specified, set the corresponding value to True
     if "sort" in sort_sequence:
         sort_ref = sort_lookup[sort_sequence["sort"]]
@@ -237,7 +251,7 @@ def pols(
                     # `return_dtype` set as either int or pl.Int64 but works without!
                     # TODO: change this to a function
                     sort_by = pl.col("path").map_elements(lambda p: p.stat().st_size)
-                case "t":
+                case "t" | "u" | "c":
                     sort_by = "time"
                     sort_desc = True
                 case "v":
@@ -261,7 +275,11 @@ def pols(
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
         add_path_metadata,
-        *([partial(add_time_metadata, time_metric=time_metric)] if t else []),
+        *(
+            [partial(add_time_metadata, time_metric=time_metric)]
+            if t or implied_time_sort
+            else []
+        ),
         *([append_slash] if p else []),
         *([] if U else sort_pipes),
     ]
