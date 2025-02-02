@@ -42,8 +42,10 @@ def pols(
     S: bool = False,
     sort: Literal[None, "size", "time", "version", "extension"] = None,
     time: (
-        Literal["atime", "access", "use", "ctime", "status", "birth", "creation"] | None
-    ) = None,
+        Literal[
+            "atime", "access", "use", "ctime", "status", "birth", "creation", "mtime"
+        ]
+    ) = "mtime",
     time_style: (
         Literal["full-iso", "long-iso", "iso", "locale"] | TimeFormat
     ) = "locale",
@@ -138,6 +140,12 @@ def pols(
     # Handle short codes
     hide = hide or I
     hidden_files_allowed = A or a
+    time_lookup = {
+        **{k: "atime" for k in "atime access use".split()},
+        **{k: "ctime" for k in "ctime status birth creation".split()},
+        "mtime": "mtime",
+    }
+    time_metric = time_lookup[time]
 
     drop_cols = [
         *([] if keep_path else ["path"]),
@@ -198,7 +206,8 @@ def pols(
     sortable = {"sort", "S", "t", "v", "c", "X"}
     # Take the flags and use their local values (i.e. parsed param values)
     sort_order = [k.lstrip("-") for k in argv if k.lstrip("-") in sortable]
-    sort_sequence = {sort_key: locals()[sort_key] for sort_key in sort_order}
+    klocals = locals()
+    sort_sequence = {sort_key: klocals[sort_key] for sort_key in sort_order}
     sort_lookup = {
         "none": "U",
         "size": "S",
@@ -217,6 +226,7 @@ def pols(
     if sort_sequence:
         # Sort in reverse order of specification so sorts given first are applied last
         for sort_flag, sort_val in reversed(sort_sequence.items()):
+            sort_desc = False
             if sort_val is False:
                 continue
             match sort_flag:
@@ -227,8 +237,9 @@ def pols(
                     # `return_dtype` set as either int or pl.Int64 but works without!
                     # TODO: change this to a function
                     sort_by = pl.col("path").map_elements(lambda p: p.stat().st_size)
-                # case "t":
-                #     sort_by = pl.col("name").str.split(".").list.last()
+                case "t":
+                    sort_by = "time"
+                    sort_desc = True
                 case "v":
                     sort_by = numeric_sort(pl.col("name"))
                 case "X":
@@ -236,7 +247,9 @@ def pols(
                 case _:
                     raise ValueError(f"Invalid flag in sort sequence {sort_flag}")
 
-            sort_func = lambda df: df.sort(by=sort_by, maintain_order=True)
+            sort_func = lambda df: df.sort(
+                by=sort_by, maintain_order=True, descending=sort_desc
+            )
             sort_pipes.append(sort_func)
     else:
         lexico_sort = lambda df: df.sort(
@@ -248,6 +261,7 @@ def pols(
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
         add_path_metadata,
+        *([partial(add_time_metadata, time_metric=time_metric)] if t else []),
         *([append_slash] if p else []),
         *([] if U else sort_pipes),
     ]
@@ -329,6 +343,16 @@ def add_path_metadata(files):
     return files.with_columns(
         is_dir=pth.map_elements(lambda p: p.is_dir(), return_dtype=pl.Boolean),
         is_symlink=pth.map_elements(lambda p: p.is_symlink(), return_dtype=pl.Boolean),
+    )
+
+
+def add_time_metadata(files, time_metric: Literal["atime", "ctime", "mtime"]):
+    time_stat = f"st_{time_metric}"
+    return files.with_columns(
+        time=pl.col("path")
+        .map_elements(lambda p: getattr(p.stat(), time_stat), return_dtype=pl.Float64)
+        .mul(1000)
+        .cast(pl.Datetime("ms")),
     )
 
 
