@@ -134,6 +134,10 @@ def pols(
         │ …             ┆ …                   │
         │ another.txt   ┆ 2025-01-31 13:44:43 │
         └───────────────┴─────────────────────┘
+
+    TOFIX:
+    - `S` flag does not seem to work correctly, change to a function and unpack paths
+      manually to create new column with values.
     """
     if to_dict and to_dicts:
         raise ValueError("Please pass only one of `to_dict` and `to_dicts`.")
@@ -298,6 +302,14 @@ def pols(
             assert idx == 0  # This should only be when no files
             continue
         if is_dir:
+            # Use source string "" for individual files in working dir and "." for WD
+            # itself except if there are no individual files/other dirs to scan then
+            # WD source string becomes "" (identical behaviour to `ls`)
+            dir_root_s = str(path_set)
+            no_files = len(individual_files) == 0
+            no_more_dirs = len(dirs_to_scan) == 1
+            if dir_root_s == "." and no_files and no_more_dirs and not R:
+                dir_root_s = ""
             dir_root = path_set
             path_set = [
                 *([Path("."), Path("..")] if a and not A else []),
@@ -317,7 +329,8 @@ def pols(
                     else:
                         path_set.append(path_set_file.relative_to(dir_root))
         else:
-            dir_root = Path()
+            dir_root_s = ""
+            dir_root = Path(dir_root_s)
             subpaths = path_set
         # e.g. `pols src` would give dir_root=src to `.`, `..`, and all in `.iterdir()`
         try:
@@ -346,9 +359,8 @@ def pols(
             continue
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
         # print(path_set_result.to_dicts())
-        results.append(
-            {dir_root.name if not dir_root.name else str(dir_root): path_set_result}
-        )
+        source_string = str(dir_root) if dir_root.name else dir_root_s
+        results.append({source_string: path_set_result})
     if print_to:
         for result in results:
             [(source, paths)] = result.items()
