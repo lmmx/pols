@@ -191,8 +191,11 @@ def pols(
 
     for path in expanded_paths:
         try:
+            if not path.exists():
+                raise FileNotFoundError(f"No such file or directory")
             is_file = path.is_file()
         except OSError as e:
+            # This includes FileNotFoundError we threw as well as access errors
             print(f"pols: cannot access '{path}': {e}", file=error_to)
             if raise_on_access:
                 raise
