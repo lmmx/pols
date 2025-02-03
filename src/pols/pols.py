@@ -204,7 +204,7 @@ def pols(
 
     drop_cols_switched = [
         *(["name"] if as_path else ["path"]),
-        *(["size"] if S else []),
+        *(["size"] if S and not l else []),
         *(["group"] if G else []),
         *(["time"] if not l and (t or implied_time_sort) else []),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),

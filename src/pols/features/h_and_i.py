@@ -3,27 +3,34 @@ from __future__ import annotations
 import polars as pl
 
 
+def format_size(size_expr, unit):
+    return pl.concat_str(
+        pl.when(size_expr < 10)
+        .then(size_expr.round(1).cast(pl.String))
+        .otherwise(
+            size_expr.ceil()
+            .cast(pl.Int64)
+            .cast(pl.String)
+            .str.replace(".0", "", literal=True)
+        ),
+        pl.lit(unit),
+    )
+
+
 def scale_unit_size(files: pl.DataFrame, base: int) -> pl.DataFrame:
     size_col = pl.col("size")
+    kb = size_col.truediv(base)
+    mb = size_col.truediv(base * base)
+    gb = size_col.truediv(base * base * base)
+
     return files.with_columns(
         size=pl.when(size_col < base)
-        .then(pl.concat_str(size_col.cast(pl.String), pl.lit("")))
+        .then(size_col.cast(pl.String))
         .when(size_col < base * base)
-        .then(
-            pl.concat_str(size_col.truediv(base).round(1).cast(pl.String), pl.lit("K"))
-        )
+        .then(format_size(kb, "K"))
         .when(size_col < base * base * base)
-        .then(
-            pl.concat_str(
-                size_col.truediv(base * base).round(0).cast(pl.String), pl.lit("M")
-            )
-        )
-        .otherwise(
-            pl.concat_str(
-                size_col.truediv(base * base * base).round(0).cast(pl.String),
-                pl.lit("G"),
-            )
-        )
+        .then(format_size(mb, "M"))
+        .otherwise(format_size(gb, "G"))
     )
 
 
