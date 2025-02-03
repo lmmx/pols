@@ -41,7 +41,6 @@ def pols(
     H: bool = False,
     dereference_command_line_symlink_to_dir: bool = False,
     hide: str | None = None,
-    i: bool = False,
     I: str | None = None,
     l: bool = False,
     L: bool = False,
@@ -98,7 +97,6 @@ def pols(
       [ ] dereference_command_line_symlink_to_dir: Follow each command line symbolic link
                                                that points to a directory.
       [x] hide: Do not list implied entries matching shell pattern.
-      [ ] i: Print the index number of each file.
       [x] I: Do not list implied entries matching shell pattern. Short code for `hide`.
       [x] l: Use a long listing format.
       [ ] L: When showing file information for a symbolic link, show information for the
