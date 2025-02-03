@@ -16,7 +16,7 @@ import polars as pl
 from .features.h_and_i import make_size_human_readable, make_size_si_unit
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
-from .features.S import add_size_metadata
+from .features.S import add_size_metadata, add_size_metadata_deref_symlinks
 from .features.v import numeric_sort
 from .resegment import resegment_raw_path
 from .walk import flat_descendants
@@ -365,17 +365,25 @@ def pols(
     if r and not U:
         sort_pipes.append(lambda df: df.reverse())
 
+    if L:
+        permissions_pipe = add_permissions_metadata_deref_symlinks
+        owner_group_pipe = add_owner_group_metadata_deref_symlinks
+        size_pipe = add_size_metadata_deref_symlinks
+        time_pipe_fd = add_time_metadata_deref_symlinks
+    else:
+        permissions_pipe = add_permissions_metadata
+        owner_group_pipe = add_owner_group_metadata
+        size_pipe = add_size_metadata
+        time_pipe_fd = add_time_metadata
+    time_pipe = partial(time_pipe_fd, time_metric=time_metric)
+
     pipes = [
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
-        *([add_permissions_metadata, add_owner_group_metadata] if l else []),
+        *([permissions_pipe, owner_group_pipe] if l else []),
         add_path_metadata,
-        *([add_size_metadata] if S or l else []),
-        *(
-            [partial(add_time_metadata, time_metric=time_metric)]
-            if l or (t or implied_time_sort)
-            else []
-        ),
+        *([size_pipe] if S or l else []),
+        *([time_pipe] if l or (t or implied_time_sort) else []),
         *([append_slash] if p else []),
         *([] if U else sort_pipes),
         # Post-sort
@@ -498,7 +506,7 @@ def pols(
         return None
 
 
-def add_path_metadata(files):
+def add_path_metadata(files: pl.DataFrame) -> pl.DataFrame:
     pth = pl.col("path")
     return files.with_columns(
         is_dir=pth.map_elements(lambda p: p.is_dir(), return_dtype=pl.Boolean),
@@ -506,7 +514,22 @@ def add_path_metadata(files):
     )
 
 
-def add_time_metadata(files, time_metric: Literal["atime", "ctime", "mtime"]):
+def add_time_metadata(
+    files: pl.DataFrame, time_metric: Literal["atime", "ctime", "mtime"]
+) -> pl.DataFrame:
+    time_stat = f"st_{time_metric}"
+    return files.with_columns(
+        time=pl.col("path")
+        .map_elements(lambda p: getattr(p.lstat(), time_stat), return_dtype=pl.Float64)
+        .mul(1000)
+        .cast(pl.Datetime("ms")),
+    )
+
+
+def add_time_metadata_deref_symlinks(
+    files: pl.DataFrame,
+    time_metric: Literal["atime", "ctime", "mtime"],
+) -> pl.DataFrame:
     time_stat = f"st_{time_metric}"
     return files.with_columns(
         time=pl.col("path")
@@ -516,7 +539,17 @@ def add_time_metadata(files, time_metric: Literal["atime", "ctime", "mtime"]):
     )
 
 
-def add_permissions_metadata(files):
+def add_permissions_metadata(files: pl.DataFrame) -> pl.DataFrame:
+    def get_mode_string(path):
+        mode = path.lstat().st_mode
+        return stat.filemode(mode)
+
+    return files.with_columns(
+        permissions=pl.col("path").map_elements(get_mode_string, return_dtype=pl.Utf8)
+    )
+
+
+def add_permissions_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
     def get_mode_string(path):
         mode = path.stat().st_mode
         return stat.filemode(mode)
@@ -526,7 +559,18 @@ def add_permissions_metadata(files):
     )
 
 
-def add_owner_group_metadata(files):
+def add_owner_group_metadata(files: pl.DataFrame) -> pl.DataFrame:
+    return files.with_columns(
+        owner=pl.col("path").map_elements(
+            lambda p: pwd.getpwuid(p.lstat().st_uid).pw_name, return_dtype=pl.Utf8
+        ),
+        group=pl.col("path").map_elements(
+            lambda p: grp.getgrgid(p.lstat().st_gid).gr_name, return_dtype=pl.Utf8
+        ),
+    )
+
+
+def add_owner_group_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
     return files.with_columns(
         owner=pl.col("path").map_elements(
             lambda p: pwd.getpwuid(p.stat().st_uid).pw_name, return_dtype=pl.Utf8
