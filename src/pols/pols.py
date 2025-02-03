@@ -168,6 +168,7 @@ def pols(
 
     drop_cols = [
         *([] if keep_path else ["path"]),
+        *(["size"] if S else []),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
         "rel_to",
     ]
@@ -288,9 +289,16 @@ def pols(
                 case "S":
                     # This may cause a `MapWithoutReturnDtypeWarning` but it errors with
                     # `return_dtype` set as either int or pl.Int64 but works without!
-                    # TODO: change this to a function
-                    sort_by = pl.col("path").map_elements(lambda p: p.stat().st_size)
                     sort_desc = True
+                    sort_by = "size"
+                    # Separate the size column computation from the sorting on it
+
+                    def add_size_column(files: pl.DataFrame):
+                        size_column = [
+                            p.stat().st_size for p in files.get_column("path")
+                        ]
+                        return files.with_columns(size=pl.Series(size_column))
+
                 case "t" | "u" | "c":
                     sort_by = "time"
                     sort_desc = True
@@ -323,6 +331,7 @@ def pols(
             else []
         ),
         *([append_slash] if p else []),
+        *([add_size_column] if S else []),
         *([] if U else sort_pipes),
     ]
 
