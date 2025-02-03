@@ -256,6 +256,77 @@ shape: (1, 1)
 └────────┘
 ```
 
+## `merge_all`
+
+As the name suggests, all source directories get merged into a single DataFrame, which is printed as
+normal. The `source` column is added to preserve the directory each row came from.
+
+For example, here is the recursive listing of the `pols/src` path in this repo:
+
+```bash
+$ ls -R
+.:
+pols
+
+./pols:
+cli.py  features  __init__.py  pols.py  resegment.py  walk.py
+
+./pols/features:
+hide.py  h.py  __init__.py  p.py  S.py  v.py
+```
+
+Here it is in a merged DataFrame:
+
+```bash
+$ pols -R --merge-all
+shape: (13, 2)
+┌───────────────────────┬─────────────────┐
+│ name                  ┆ source          │
+│ ---                   ┆ ---             │
+│ str                   ┆ str             │
+╞═══════════════════════╪═════════════════╡
+│ pols                  ┆ .               │
+│ pols/__init__.py      ┆ ./pols          │
+│ pols/cli.py           ┆ ./pols          │
+│ pols/features         ┆ ./pols          │
+│ pols/pols.py          ┆ ./pols          │
+│ …                     ┆ …               │
+│ pols/features/h.py    ┆ ./pols/features │
+│ pols/features/hide.py ┆ ./pols/features │
+│ pols/features/p.py    ┆ ./pols/features │
+│ pols/features/S.py    ┆ ./pols/features │
+│ pols/features/v.py    ┆ ./pols/features │
+└───────────────────────┴─────────────────┘
+```
+
+If used in combination with `to_dict`, the merged DataFrame is stored in the single key,
+the empty string key.
+
+> Note: passing `--to-dict` returns the value, so to avoid seeing the print out and the result dict
+> to show the merge result we pass `--print-to="devnull"` to turn off printing.
+
+```bash
+$ pols -R --merge-all --to-dict --print-to="devnull"
+{'': shape: (13, 2)
+┌───────────────────────┬─────────────────┐
+│ name                  ┆ source          │
+│ ---                   ┆ ---             │
+│ str                   ┆ str             │
+╞═══════════════════════╪═════════════════╡
+│ pols                  ┆ .               │
+│ pols/__init__.py      ┆ ./pols          │
+│ pols/cli.py           ┆ ./pols          │
+│ pols/features         ┆ ./pols          │
+│ pols/pols.py          ┆ ./pols          │
+│ …                     ┆ …               │
+│ pols/features/h.py    ┆ ./pols/features │
+│ pols/features/hide.py ┆ ./pols/features │
+│ pols/features/p.py    ┆ ./pols/features │
+│ pols/features/S.py    ┆ ./pols/features │
+│ pols/features/v.py    ┆ ./pols/features │
+└───────────────────────┴─────────────────┘}
+```
+
 ### `drop_override` and `keep_override`
 
 As well as the `ls -l` style interface, the `drop_override` parameter (`--drop-override` in

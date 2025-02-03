@@ -6,6 +6,7 @@ import pwd
 import re
 import stat
 from functools import partial, reduce
+from os import devnull
 from pathlib import Path
 from sys import argv, stderr, stdout
 from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
@@ -66,14 +67,15 @@ def pols(
     # Rest are additions to the ls flags
     as_path: bool = False,
     keep_fs_metadata: bool = False,
-    print_to: TextIO | None = stdout,
-    error_to: TextIO | None = stderr,
+    print_to: TextIO | Literal["stdout", "stderr", "devnull"] = "stdout",
+    error_to: TextIO | Literal["stderr", "stdout", "devnull"] = "stderr",
     to_dict: bool = False,
     to_dicts: bool = False,
     raise_on_access: bool = False,
     debug: bool = False,
     drop_override: str | None = None,
     keep_override: str | None = None,
+    merge_all: bool = False,
 ) -> pl.DataFrame:
     """
     List the contents of a directory as Polars DataFrame.
@@ -140,6 +142,9 @@ def pols(
                          will not override standard list of columns to drop).
       [x] keep_override: Comma-separated string of column names to keep (default: None,
                          will not override standard list of columns to drop).
+      [x] merge_all: Merge all results into a single DataFrame with a column to preserve
+                     their source directory (this is the empty string for individual files
+                     or when there is only a single directory being listed).
 
         >>> pls()
         shape: (77, 2)
@@ -157,6 +162,9 @@ def pols(
     - `S` flag does not seem to work correctly, change to a function and unpack paths
       manually to create new column with values.
     """
+    printer_lookup = {"stdout": stdout, "stderr": stderr, "devnull": devnull}
+    if isinstance(print_to, str):
+        print_to = printer_lookup.get(print_to)
     if to_dict and to_dicts:
         raise ValueError("Please pass only one of `to_dict` and `to_dicts`.")
     # Handle short codes
@@ -225,7 +233,8 @@ def pols(
                 expanded_paths.append(path)
         except OSError as e:
             # This includes FileNotFoundError we threw as well as access errors
-            print(f"pols: cannot access '{path}': {e}", file=error_to)
+            if error_to != devnull:
+                print(f"pols: cannot access '{path}': {e}", file=error_to)
             if raise_on_access:
                 raise
             continue
@@ -237,7 +246,8 @@ def pols(
             is_file = path.is_file()
         except OSError as e:
             # This includes FileNotFoundError we threw as well as access errors
-            print(f"pols: cannot access '{path}': {e}", file=error_to)
+            if error_to != devnull:
+                print(f"pols: cannot access '{path}': {e}", file=error_to)
             if raise_on_access:
                 raise
             continue
@@ -259,7 +269,8 @@ def pols(
         if raise_on_access:
             raise excs
         else:
-            print(excs, file=error_to)
+            if error_to != devnull:
+                print(excs, file=error_to)
 
     if R:
         for unscanned_dir in dirs_to_scan[:]:
@@ -389,9 +400,11 @@ def pols(
                         # Just do this to try to trigger an OSError to discard it early
                         path_set_file.is_file()
                     except OSError as e:
-                        print(
-                            f"pols: cannot access '{path_set_file}': {e}", file=error_to
-                        )
+                        if error_to != devnull:
+                            print(
+                                f"pols: cannot access '{path_set_file}': {e}",
+                                file=error_to,
+                            )
                         if raise_on_access:
                             raise
                         continue
@@ -432,7 +445,8 @@ def pols(
             if raise_on_access:
                 raise e
             else:
-                print(e, file=error_to)
+                if error_to != devnull:
+                    print(e, file=error_to)
             continue
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
         source_string = (
@@ -441,16 +455,29 @@ def pols(
             else os.path.sep.join(drrp)
         )
         results.append({source_string: path_set_result})
-    if print_to:
-        for result in results:
-            [(source, paths)] = result.items()
-            if source:
-                print(f"{source}:", file=print_to)
-            print(paths, file=print_to)
-            if debug:
-                breakpoint()
+    if merge_all:
+        merger = []
+        for item in results:
+            merge_el_source, merge_el_df = next(iter(item.items()))
+            merge_el_with_src = merge_el_df.with_columns(source=pl.lit(merge_el_source))
+            merger.append(merge_el_with_src)
+        merged = pl.concat(merger)
+    if print_to != devnull:
+        if merge_all:
+            print(merged, file=print_to)
+        else:
+            for result in results:
+                [(source, paths)] = result.items()
+                if source:
+                    print(f"{source}:", file=print_to)
+                print(paths, file=print_to)
+    if debug:
+        breakpoint()
     if to_dict:
-        return {source: df for res in results for source, df in res.items()}
+        if merge_all:
+            return {"": merged}
+        else:
+            return {source: df for res in results for source, df in res.items()}
     elif to_dicts:
         return results
     else:
