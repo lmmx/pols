@@ -102,6 +102,43 @@ src/pols/features/a.py  src/pols/features/A.py  src/pols/features/hide.py
 src/pols/features/__init__.py  src/pols/features/p.py
 ```
 
+### Patterns that don't match will error non-fatally
+
+It's allowed to not match a file, just like in `ls`:
+
+```bash
+$ ls *.yaml *.toml *.md
+ls: cannot access '*.yaml': No such file or directory
+ pyproject.toml   README.md
+
+$ pols *.yaml *.toml *.md
+pols: cannot access '*.yaml': No such file or directory
+shape: (2, 1)
+┌────────────────┐
+│ name           │
+│ ---            │
+│ str            │
+╞════════════════╡
+│ pyproject.toml │
+│ README.md      │
+└────────────────┘
+```
+
+### `OSError`s like `FileNotFoundError` are non-fatal but can be thrown with `raise_on_access`
+
+If you want such errors to be fatal, pass `raise_on_acecss` (`--raise-on-access` on the command line):
+
+```bash
+$ pols *.yaml *.toml *.md --raise-on-access
+pols: cannot access '*.yaml': No such file or directory
+Traceback (most recent call last):
+...
+FileNotFoundError: No such file or directory
+```
+
+Note that the file expansion and preparation is done before any printing or DataFrame operations, so
+these errors won't occur mid-way through any Polars computations.
+
 ## Differences from `ls`
 
 The design is intended to keep as closely as possible to GNU coreutils

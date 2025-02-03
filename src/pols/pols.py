@@ -181,17 +181,26 @@ def pols(
 
     for path in unexpanded_paths:
         # Expand kleene star
-        if any("*" in p for p in path.parts):
-            # Remove double kleene stars, we don't support recursive **
-            if any("**" in p for p in path.parts):
-                path = Path(*[re.sub(r"\*+", "*", part) for part in p.parts])
+        try:
+            if any("*" in p for p in path.parts):
+                # Remove double kleene stars, we don't support recursive **
+                if any("**" in p for p in path.parts):
+                    path = Path(*[re.sub(r"\*+", "*", part) for part in p.parts])
 
-            glob_base = Path(*[part for part in path.parts if "*" not in part])
-            glob_subpattern = str(path.relative_to(glob_base))
-            globbed_paths = list(glob_base.glob(glob_subpattern))
-            expanded_paths.extend(globbed_paths)
-        else:
-            expanded_paths.append(path)
+                glob_base = Path(*[part for part in path.parts if "*" not in part])
+                glob_subpattern = str(path.relative_to(glob_base))
+                globbed_paths = list(glob_base.glob(glob_subpattern))
+                if not globbed_paths:
+                    raise FileNotFoundError(f"No such file or directory")
+                expanded_paths.extend(globbed_paths)
+            else:
+                expanded_paths.append(path)
+        except OSError as e:
+            # This includes FileNotFoundError we threw as well as access errors
+            print(f"pols: cannot access '{path}': {e}", file=error_to)
+            if raise_on_access:
+                raise
+            continue
 
     for path in expanded_paths:
         try:
@@ -330,9 +339,12 @@ def pols(
             dir_root_s = str(path_set)
             no_files = len(individual_files) == 0
             no_more_dirs = len(dirs_to_scan) == 1
+            # Special case for printing a single directory without its path
             if dir_root_s == "." and no_files and no_more_dirs and not R:
                 dir_root_s = ""
             dir_root = path_set
+            drrp = dir_root._raw_paths
+            is_dot_rel = drrp and drrp[0].split(os.path.sep, 1)[0] == "."
             path_set = [
                 *([Path("."), Path("..")] if a and not A else []),
             ]
@@ -349,11 +361,19 @@ def pols(
                             raise
                         continue
                     else:
-                        path_set.append(path_set_file.relative_to(dir_root))
+                        subpath = path_set_file.relative_to(dir_root)
+                        rs_subpath = resegment_raw_path(
+                            Path(
+                                os.path.sep.join([*dir_root._raw_paths, *subpath.parts])
+                            )
+                        )
+                        path_set.append(rs_subpath)
         else:
             dir_root_s = ""
             dir_root = Path(dir_root_s)
             subpaths = path_set
+            drrp = dir_root._raw_paths
+            is_dot_rel = drrp and drrp[0].split(os.path.sep, 1)[0] == "."
         # e.g. `pols src` would give dir_root=src to `.`, `..`, and all in `.iterdir()`
         try:
             file_entries = []
@@ -380,8 +400,10 @@ def pols(
                 print(e, file=error_to)
             continue
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
-        # print(path_set_result.to_dicts())
-        source_string = str(dir_root) if dir_root.name else dir_root_s
+        if is_dot_rel:
+            source_string = os.path.sep.join(drrp)
+        else:
+            source_string = os.path.sep.join(drrp) if dir_root.name else dir_root_s
         results.append({source_string: path_set_result})
     if print_to:
         for result in results:
