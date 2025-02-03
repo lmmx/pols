@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import grp
 import os.path
+import pwd
 import re
+import stat
 from functools import partial, reduce
 from pathlib import Path
 from sys import argv, stderr, stdout
@@ -9,9 +12,10 @@ from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
 import polars as pl
 
+from .features.h import make_size_human_readable
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
-from .features.S import add_size_column
+from .features.S import add_size_metadata
 from .features.v import numeric_sort
 from .resegment import resegment_raw_path
 from .walk import flat_descendants
@@ -87,8 +91,8 @@ def pols(
       [ ] group_directories_first: Group directories before files; can be augmented with a
                                `sort` option, but any use of `sort=None` (`U`)
                                disables grouping.
-      [ ] G: In a long listing, don't print group names.
-      [ ] h: With `l` and `s`, print sizes like 1K 234M 2G etc.
+      [x] G: In a long listing, don't print group names.
+      [X] h: With `l` and `s`, print sizes like 1K 234M 2G etc.
       [ ] si: Like `h`, but use powers of 1000 not 1024.
       [ ] H: Follow symbolic links listed on the command line.
       [ ] dereference_command_line_symlink_to_dir: Follow each command line symbolic link
@@ -180,7 +184,8 @@ def pols(
     drop_cols_switched = [
         *(["name"] if as_path else ["path"]),
         *(["size"] if S else []),
-        *(["time"] if t or implied_time_sort else []),
+        *(["group"] if G else []),
+        *(["time"] if not l and (t or implied_time_sort) else []),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
         "rel_to",
     ]
@@ -300,8 +305,8 @@ def pols(
         sort_sequence = dict([*ss_lst[:ss_idx, (sort_ref, True), ss_lst[ss_idx + 1 :]]])
 
     if sort_sequence:
-        # Sort in reverse order of specification so sorts given first are applied last
-        for sort_flag, sort_val in reversed(sort_sequence.items()):
+        # Sort in order of specification so sorts given first are applied first
+        for sort_flag, sort_val in sort_sequence.items():
             sort_desc = False
             if sort_val is False:
                 continue
@@ -339,15 +344,18 @@ def pols(
     pipes = [
         *([partial(filter_out_pattern, pattern=hide)] if hide else []),
         # Add symlink and directory bools from Path methods
+        *([add_permissions_metadata, add_owner_group_metadata] if l else []),
         add_path_metadata,
+        *([add_size_metadata] if S or l else []),
         *(
             [partial(add_time_metadata, time_metric=time_metric)]
-            if t or implied_time_sort
+            if l or (t or implied_time_sort)
             else []
         ),
         *([append_slash] if p else []),
-        *([add_size_column] if S else []),
         *([] if U else sort_pipes),
+        # Post-sort
+        *([make_size_human_readable] if h and (S or l) else []),
     ]
 
     results = []
@@ -467,4 +475,22 @@ def add_time_metadata(files, time_metric: Literal["atime", "ctime", "mtime"]):
     )
 
 
-# Known bugs: `pols *` in home dir fails, maybe permissions error?
+def add_permissions_metadata(files):
+    def get_mode_string(path):
+        mode = path.stat().st_mode
+        return stat.filemode(mode)
+
+    return files.with_columns(
+        permissions=pl.col("path").map_elements(get_mode_string, return_dtype=pl.Utf8)
+    )
+
+
+def add_owner_group_metadata(files):
+    return files.with_columns(
+        owner=pl.col("path").map_elements(
+            lambda p: pwd.getpwuid(p.stat().st_uid).pw_name, return_dtype=pl.Utf8
+        ),
+        group=pl.col("path").map_elements(
+            lambda p: grp.getgrgid(p.stat().st_gid).gr_name, return_dtype=pl.Utf8
+        ),
+    )
