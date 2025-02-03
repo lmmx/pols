@@ -3,7 +3,18 @@ import re
 from pathlib import Path
 
 
-def walk_root_rel_raw_paths(source: Path, report: bool = True):
+def flat_descendants(source: Path, *, hidden: bool = True, report: bool = True):
+    """
+    Flatten the list of descendants (provided by `walk_root_rel_raw_paths` in levels),
+    removing hidden files if `hidden` is True. Resegment these to get proper raw paths.
+    """
+    recursed_subdirs = walk_root_rel_raw_paths(source, hidden=hidden, report=report)[1:]
+    return [dir_p for dir_level in recursed_subdirs for dir_p in dir_level]
+
+
+def walk_root_rel_raw_paths(
+    source: Path, *, hidden: bool = True, report: bool = True
+) -> list[list[str]]:
     """
     Walk a path's subtree of paths (descendants), restoring the `.` prefix for all of
     these directories' raw paths (the 0'th raw path) so as to preserve this information
@@ -24,6 +35,11 @@ def walk_root_rel_raw_paths(source: Path, report: bool = True):
 
     Assuming it came from a `Path` instantiated from parts, not a single path-separated
     string, the 0'th element in `_raw_paths` will be the top directory part with the `.`
+
+    Args:
+        source: The directory to find descendants under (will be the 1st level result).
+        hidden: Whether to include hidden directories (with a name starting with `.`).
+        report: Whether to print out a debug report.
     """
     if report:
         print(f"Processing source path {source!r} -> {source._raw_paths=}")
@@ -55,6 +71,10 @@ def walk_root_rel_raw_paths(source: Path, report: bool = True):
             for raw_path_item in parent_dir._raw_paths[:1]
         ]
         for parent_dir, _, _ in source.walk()
+        if hidden
+        or not any(
+            part.startswith(".") for part in parent_dir.relative_to(source).parts
+        )
     ]
 
 

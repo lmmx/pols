@@ -13,7 +13,7 @@ from .features.hide import filter_out_pattern
 from .features.p import append_slash
 from .features.v import numeric_sort
 from .resegment import resegment_raw_path
-from .walk import walk_root_rel_raw_paths
+from .walk import flat_descendants
 
 if TYPE_CHECKING:
     import polars as pl
@@ -231,10 +231,11 @@ def pols(
                 descendant_dirs = [dir_p for dir_p, _, _ in unscanned_dir.walk()][1:]
             else:
                 # Construct from parts for the `walk_root_rel_raw_paths` function
-                raw_unscanned_dir = resegment_raw_path(unscanned_dir)
-                usd_R = walk_root_rel_raw_paths(raw_unscanned_dir, report=debug)[1:]
+                raw_usd = resegment_raw_path(unscanned_dir)
                 # Must preserve raw paths carefully. Flatten sublevel lists first
-                desc_dir_strs = [dir_p for dir_level in usd_R for dir_p in dir_level]
+                desc_dir_strs = flat_descendants(
+                    raw_usd, hidden=hidden_files_allowed, report=debug
+                )
                 descendant_dirs = [resegment_raw_path(Path(dd)) for dd in desc_dir_strs]
             dirs_to_scan.extend(descendant_dirs)
 
