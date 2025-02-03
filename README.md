@@ -160,6 +160,11 @@ filtering hidden files minus some pattern. In `ls`, `--hide` silently fails if p
 As well as the `ls -l` style interface, the `drop_override` parameter (`--drop-override` in
 the CLI) will allow you to specify columns to keep, for more control and for ease of debugging.
 
+These are flags to include/exclude computed columns from being dropped. Typically, we don't discard
+columns when we compute them, but the underlying goal of this tool is to imitate `ls`, so we must.
+To see all the information `pols` collects, set `drop_override` to `""` (i.e. the empty list as a
+comma-separated string).
+
 ```bash
 $ pols
 .:

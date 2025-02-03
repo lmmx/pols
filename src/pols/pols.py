@@ -353,6 +353,7 @@ def pols(
     failures = []
     for idx, path_set in enumerate((individual_files, *dirs_to_scan)):
         is_dir = idx > 0
+        special_ss = False
         if not path_set:
             assert idx == 0  # This should only be when no files
             continue
@@ -364,7 +365,8 @@ def pols(
             no_files = len(individual_files) == 0
             no_more_dirs = len(dirs_to_scan) == 1
             # Special case for printing a single directory without its path
-            if dir_root_s == "." and no_files and no_more_dirs and not R:
+            special_ss = dir_root_s == "." and no_files and no_more_dirs and not R
+            if special_ss:
                 dir_root_s = ""
             dir_root = path_set
             drrp = dir_root._raw_paths
@@ -424,10 +426,11 @@ def pols(
                 print(e, file=error_to)
             continue
         path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
-        if is_dot_rel:
-            source_string = os.path.sep.join(drrp)
-        else:
-            source_string = os.path.sep.join(drrp) if dir_root.name else dir_root_s
+        source_string = (
+            dir_root_s
+            if (is_dot_rel and special_ss) or (not dir_root.name)
+            else os.path.sep.join(drrp)
+        )
         results.append({source_string: path_set_result})
     if print_to:
         for result in results:
