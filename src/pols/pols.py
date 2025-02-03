@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os.path
+import re
 from functools import partial, reduce
 from pathlib import Path
 from sys import argv, stderr, stdout
@@ -10,6 +12,8 @@ import polars as pl
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
 from .features.v import numeric_sort
+from .resegment import resegment_raw_path
+from .walk import walk_root_rel_raw_paths
 
 if TYPE_CHECKING:
     import polars as pl
@@ -219,6 +223,20 @@ def pols(
             raise excs
         else:
             print(excs, file=error_to)
+
+    if R:
+        for unscanned_dir in dirs_to_scan[:]:
+            if unscanned_dir.is_absolute():
+                # Simple case, can use `pathlib.Path.walk()`
+                descendant_dirs = [dir_p for dir_p, _, _ in unscanned_dir.walk()][1:]
+            else:
+                # Construct from parts for the `walk_root_rel_raw_paths` function
+                raw_unscanned_dir = resegment_raw_path(unscanned_dir)
+                usd_R = walk_root_rel_raw_paths(raw_unscanned_dir, report=debug)[1:]
+                # Must preserve raw paths carefully. Flatten sublevel lists first
+                desc_dir_strs = [dir_p for dir_level in usd_R for dir_p in dir_level]
+                descendant_dirs = [resegment_raw_path(Path(dd)) for dd in desc_dir_strs]
+            dirs_to_scan.extend(descendant_dirs)
 
     sort_pipes = []
     # none (`U`), size (`S`), time (`t`), version (`v`), extension (`X`).
