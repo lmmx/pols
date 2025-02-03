@@ -1,7 +1,7 @@
 import argh
 
-from .pols import pols
+from . import ls
 
 
 def cli():
-    argh.dispatch_command(pols)
+    argh.dispatch_command(ls)
