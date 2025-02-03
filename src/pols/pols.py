@@ -13,8 +13,18 @@ from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
 import polars as pl
 
+from .features.common import add_path_metadata
 from .features.h_and_i import make_size_human_readable, make_size_si_unit
 from .features.hide import filter_out_pattern
+from .features.l import (
+    add_owner_group_metadata,
+    add_owner_group_metadata_deref_symlinks,
+    add_permissions_metadata,
+    add_permissions_metadata_deref_symlinks,
+    add_symlink_targets,
+    add_time_metadata,
+    add_time_metadata_deref_symlinks,
+)
 from .features.p import append_slash
 from .features.S import add_size_metadata, add_size_metadata_deref_symlinks
 from .features.v import numeric_sort
@@ -64,15 +74,15 @@ def pols(
     t: bool = False,
     # Rest are additions to the ls flags
     as_path: bool = False,
-    keep_fs_metadata: bool = False,
     print_to: TextIO | Literal["stdout", "stderr", "devnull"] | None = None,
     error_to: TextIO | Literal["stderr", "stdout", "devnull"] | None = None,
     to_dict: bool = False,
     to_dicts: bool = False,
     raise_on_access: bool = False,
     debug: bool = False,
-    drop_override: str | None = None,
-    keep_override: str | None = None,
+    inspect: bool = False,
+    drop_only: str | None = None,
+    keep: str | None = None,
     merge_all: bool = False,
     with_filter: str | None = None,
 ) -> pl.DataFrame:
@@ -125,7 +135,6 @@ def pols(
       [x] t: Sort by time, newest first
       [x] as_path: Return the path column containing the Pathlib path object rather than
                    string name column.
-      [x] keep_fs_metadata: Keep filesystem metadata booleans: `is_dir`, `is_symlink`.
       [x] print_to: Where to print to, by default writes to STDOUT, `None` to disable.
       [x] error_to: Where to error to, by default writes to STDERR, `None` to disable.
       [x] to_dict: Return the result as dict (key is the source: for individual files
@@ -133,12 +142,13 @@ def pols(
           directory).
       [x] to_dicts: Return the result as dicts.
       [x] raise_on_access: Raise an error if a file cannot be accessed.
-      [x] debug: Print verbose report output when path walking directory descendants,
-                 and breakpoint on the final result after it is printed.
-      [x] drop_override: Comma-separated string of column names to keep (default: None,
+      [x] inspect: Breakpoint on the final result after it is printed.
+      [x] debug: Print verbose report output when path walking directory descendants.
+                 Implies `inspect`, breakpoints on the final result after it is printed.
+      [x] drop_only: Comma-separated string of column names to keep (default: None,
                          will not override standard list of columns to drop).
-      [x] keep_override: Comma-separated string of column names to keep (default: None,
-                         will not override standard list of columns to drop).
+      [x] keep: Comma-separated string of column names to keep (default: None,
+                         will not keep any of the standard list of columns to drop).
       [x] merge_all: Merge all results into a single DataFrame with a column to preserve
                      their source directory (this is the empty string for individual files
                      or when there is only a single directory being listed).
@@ -165,6 +175,7 @@ def pols(
       manually to create new column with values.
     """
     merge_all = with_filter is not None or merge_all  # with_filter implies merge_all
+    inspect = debug or inspect
     if si and h:
         raise SystemExit(
             "Cannot set both `h` and `si` (conflicting bases for file size)"
@@ -214,18 +225,19 @@ def pols(
         *(["size"] if S and not l else []),
         *(["group"] if G else []),
         *(["time"] if not l and (t or implied_time_sort) else []),
-        *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
+        "is_symlink",
+        "is_dir",
         "rel_to",
     ]
     drop_cols_kept = (
         drop_cols_switched
-        if keep_override is None
-        else [k for k in drop_cols_switched if k not in keep_override.split(",")]
+        if keep is None
+        else [k for k in drop_cols_switched if k not in keep.split(",")]
     )
     drop_cols = (
         drop_cols_kept
-        if drop_override is None
-        else (drop_override.split(",") if drop_override else [])
+        if drop_only is None
+        else (drop_only.split(",") if drop_only else [])
     )
 
     # Identify the files to operate on
@@ -514,7 +526,7 @@ def pols(
                 if source:
                     print(f"{source}:", file=print_to)
                 print(paths, file=print_to)
-    if debug:
+    if inspect:
         breakpoint()
     if to_dict:
         if merge_all:
@@ -525,88 +537,3 @@ def pols(
         return results
     else:
         return None
-
-
-def add_path_metadata(files: pl.DataFrame) -> pl.DataFrame:
-    pth = pl.col("path")
-    return files.with_columns(
-        is_dir=pth.map_elements(lambda p: p.is_dir(), return_dtype=pl.Boolean),
-        is_symlink=pth.map_elements(lambda p: p.is_symlink(), return_dtype=pl.Boolean),
-    )
-
-
-def add_time_metadata(
-    files: pl.DataFrame, time_metric: Literal["atime", "ctime", "mtime"]
-) -> pl.DataFrame:
-    time_stat = f"st_{time_metric}"
-    return files.with_columns(
-        time=pl.col("path")
-        .map_elements(lambda p: getattr(p.lstat(), time_stat), return_dtype=pl.Float64)
-        .mul(1000)
-        .cast(pl.Datetime("ms")),
-    )
-
-
-def add_time_metadata_deref_symlinks(
-    files: pl.DataFrame,
-    time_metric: Literal["atime", "ctime", "mtime"],
-) -> pl.DataFrame:
-    time_stat = f"st_{time_metric}"
-    return files.with_columns(
-        time=pl.col("path")
-        .map_elements(lambda p: getattr(p.stat(), time_stat), return_dtype=pl.Float64)
-        .mul(1000)
-        .cast(pl.Datetime("ms")),
-    )
-
-
-def add_permissions_metadata(files: pl.DataFrame) -> pl.DataFrame:
-    def get_mode_string(path):
-        mode = path.lstat().st_mode
-        return stat.filemode(mode)
-
-    return files.with_columns(
-        permissions=pl.col("path").map_elements(get_mode_string, return_dtype=pl.Utf8)
-    )
-
-
-def add_permissions_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
-    def get_mode_string(path):
-        mode = path.stat().st_mode
-        return stat.filemode(mode)
-
-    return files.with_columns(
-        permissions=pl.col("path").map_elements(get_mode_string, return_dtype=pl.Utf8)
-    )
-
-
-def add_owner_group_metadata(files: pl.DataFrame) -> pl.DataFrame:
-    return files.with_columns(
-        owner=pl.col("path").map_elements(
-            lambda p: pwd.getpwuid(p.lstat().st_uid).pw_name, return_dtype=pl.Utf8
-        ),
-        group=pl.col("path").map_elements(
-            lambda p: grp.getgrgid(p.lstat().st_gid).gr_name, return_dtype=pl.Utf8
-        ),
-    )
-
-
-def add_owner_group_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
-    return files.with_columns(
-        owner=pl.col("path").map_elements(
-            lambda p: pwd.getpwuid(p.stat().st_uid).pw_name, return_dtype=pl.Utf8
-        ),
-        group=pl.col("path").map_elements(
-            lambda p: grp.getgrgid(p.stat().st_gid).gr_name, return_dtype=pl.Utf8
-        ),
-    )
-
-
-def add_symlink_targets(files: pl.DataFrame) -> pl.DataFrame:
-    symlink_targets = [
-        p.readlink() if is_link else None
-        for p, is_link in zip(files.get_column("path"), files.get_column("is_symlink"))
-    ]
-    return files.with_columns(
-        symlink_target=pl.Series(symlink_targets, dtype=pl.Object)
-    )

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import polars as pl
 
+__all__ = ("numeric_sort",)
+
 
 def numeric_sort(name: pl.Expr) -> pl.Expr:
     return (

@@ -229,6 +229,31 @@ leaving it that way.
 
 ## Extra features
 
+### `inspect`
+
+Want to look at the actual results not just command line print outs? The `inspect` parameter will
+drop you into a PDB debugger to quickly be able to handle the data itself.
+
+Try passing lists of column names as the comma-separated values to `drop_only` and
+`keep` to change the final columns available for inspection.
+
+### `merge_all` to DataFrame
+
+Passing the `merge_all` flag will collect all of the results in a single DataFrame, with the
+directory sources becoming a `source` column.
+
+### Filtering with `with_filter`
+
+Allows passing either:
+
+- a column name, just like in normal Polars filter expressions, which get evaluated to an implicit
+  "rows where column's value is True" filter.
+- a string which will `eval` to a Polars `Expr`
+- a Polars `Expr` (when using as a Python library)
+
+To avoid invalid results from filtering out entire directories yet still having them in the results
+dictionary, `with_filter` always implies `merge_all`.
+
 ### `as_path`
 
 The `as_path` parameter (`--as-path` flag) gives the result back as a `pathlib.Path` type, Polars object
@@ -327,14 +352,14 @@ $ pols -R --merge-all --to-dict --print-to="devnull"
 └───────────────────────┴─────────────────┘}
 ```
 
-### `drop_override` and `keep_override`
+### `drop_only` and `keep`
 
-As well as the `ls -l` style interface, the `drop_override` parameter (`--drop-override` in
+As well as the `ls -l` style interface, the `drop_only` parameter (`--drop-only` in
 the CLI) will allow you to specify columns to keep, for more control and for ease of debugging.
 
 These are flags to include/exclude computed columns from being dropped. Typically, we don't discard
 columns when we compute them, but the underlying goal of this tool is to imitate `ls`, so we must.
-To see all the information `pols` collects, set `drop_override` to `""` (i.e. the empty list as a
+To see all the information `pols` collects, set `drop_only` to `""` (i.e. the empty list as a
 comma-separated string).
 
 ```bash
@@ -353,7 +378,7 @@ shape: (6, 1)
 │ tests          │
 │ uv.lock        │
 └────────────────┘
-$ pols --drop-override ''
+$ pols --drop-only ''
 .:
 shape: (6, 5)
 ┌────────────────┬────────────────┬────────┬────────┬────────────┐
@@ -368,7 +393,7 @@ shape: (6, 5)
 │ tests          ┆ tests          ┆ .      ┆ true   ┆ false      │
 │ uv.lock        ┆ uv.lock        ┆ .      ┆ false  ┆ false      │
 └────────────────┴────────────────┴────────┴────────┴────────────┘
-$ pols --t --drop-override ''
+$ pols --t --drop-only ''
 .:
 shape: (6, 6)
 ┌────────────────┬────────────────┬────────┬────────┬────────────┬─────────────────────────┐
@@ -383,9 +408,28 @@ shape: (6, 6)
 │ src            ┆ src            ┆ .      ┆ true   ┆ false      ┆ 2025-02-01 19:13:57.460 │
 │ tests          ┆ tests          ┆ .      ┆ true   ┆ false      ┆ 2025-02-01 19:13:57.460 │
 └────────────────┴────────────────┴────────┴────────┴────────────┴─────────────────────────┘
+$ pols -R --merge-all --keep 'is_dir'
+shape: (28, 3)
+┌─────────────────────────┬────────┬─────────┐
+│ name                    ┆ is_dir ┆ source  │
+│ ---                     ┆ ---    ┆ ---     │
+│ str                     ┆ bool   ┆ str     │
+╞═════════════════════════╪════════╪═════════╡
+│ dist                    ┆ true   ┆ .       │
+│ pyproject.toml          ┆ false  ┆ .       │
+│ README.md               ┆ false  ┆ .       │
+│ src                     ┆ true   ┆ .       │
+│ tests                   ┆ true   ┆ .       │
+│ …                       ┆ …      ┆ …       │
+│ tests/core_test.py      ┆ false  ┆ ./tests │
+│ tests/format_test.py    ┆ false  ┆ ./tests │
+│ tests/recursion_test.py ┆ false  ┆ ./tests │
+│ tests/sort_test.py      ┆ false  ┆ ./tests │
+│ tests/symlink_test.py   ┆ false  ┆ ./tests │
+└─────────────────────────┴────────┴─────────┘
 ```
 
-Naturally there is also `keep_override` parameter (`--keep-override` flag) (which will prevent the named columns from being dropped).
+Naturally there is also a `keep` parameter (`--keep` flag) (which will prevent the named columns from being dropped).
 
 ```bash
 $ pols --t
@@ -403,7 +447,7 @@ shape: (6, 1)
 │ src            │
 │ tests          │
 └────────────────┘
-$ pols --t --keep-override path
+$ pols --t --keep path
 .:
 shape: (6, 2)
 ┌────────────────┬────────────────┐
@@ -418,7 +462,7 @@ shape: (6, 2)
 │ src            ┆ src            │
 │ tests          ┆ tests          │
 └────────────────┴────────────────┘
-$ pols --t --keep-override time
+$ pols --t --keep time
 .:
 shape: (6, 2)
 ┌────────────────┬─────────────────────────┐
@@ -433,7 +477,7 @@ shape: (6, 2)
 │ src            ┆ 2025-02-01 19:13:57.460 │
 │ tests          ┆ 2025-02-01 19:13:57.460 │
 └────────────────┴─────────────────────────┘
-$ pols --t --keep-override 'path,time'
+$ pols --t --keep'path,time'
 .:
 shape: (6, 3)
 ┌────────────────┬────────────────┬─────────────────────────┐

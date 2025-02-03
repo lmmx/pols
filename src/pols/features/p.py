@@ -1,5 +1,8 @@
 from __future__ import annotations
+
 import polars as pl
+
+__all__ = ("append_slash",)
 
 
 def append_slash(files: pl.DataFrame) -> pl.DataFrame:

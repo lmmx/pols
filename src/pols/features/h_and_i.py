@@ -2,6 +2,13 @@ from __future__ import annotations
 
 import polars as pl
 
+__all__ = (
+    "format_size",
+    "scale_unit_size",
+    "make_size_si_unit",
+    "make_size_human_readable",
+)
+
 
 def format_size(size_expr, unit):
     return pl.concat_str(
