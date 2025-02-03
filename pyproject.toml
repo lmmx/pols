@@ -1,6 +1,6 @@
 [project]
 name = "polars-ls"
-version = "0.2.1"
+version = "0.2.2"
 description = "List directory contents as Polars DataFrames"
 readme = "README.md"
 authors = [
