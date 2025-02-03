@@ -60,7 +60,7 @@ def pols(
     X: bool = False,
     t: bool = False,
     # Rest are additions to the ls flags
-    keep_path: bool = False,
+    as_path: bool = False,
     keep_fs_metadata: bool = False,
     print_to: TextIO | None = stdout,
     error_to: TextIO | None = stderr,
@@ -96,7 +96,7 @@ def pols(
       [x] hide: Do not list implied entries matching shell pattern.
       [ ] i: Print the index number of each file.
       [x] I: Do not list implied entries matching shell pattern. Short code for `hide`.
-      [ ] l: Use a long listing format.
+      [x] l: Use a long listing format.
       [ ] L: When showing file information for a symbolic link, show information for the
          file the link references rather than for the link itself.
       [x] p: Append `/` indicator to directories.
@@ -120,7 +120,8 @@ def pols(
          (so "file2" comes after "file10" etc.).
       [x] X: Sort alphabetically by entry extension.
       [x] t: Sort by time, newest first
-      [x] keep_path: Keep a path column with the Pathlib path object.
+      [x] as_path: Return the path column containing the Pathlib path object rather than
+                   string name column.
       [x] keep_fs_metadata: Keep filesystem metadata booleans: `is_dir`, `is_symlink`.
       [x] print_to: Where to print to, by default writes to STDOUT, `None` to disable.
       [x] error_to: Where to error to, by default writes to STDERR, `None` to disable.
@@ -177,7 +178,7 @@ def pols(
         ) from exc
 
     drop_cols_switched = [
-        *([] if keep_path else ["path"]),
+        *(["name"] if as_path else ["path"]),
         *(["size"] if S else []),
         *(["time"] if t or implied_time_sort else []),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),

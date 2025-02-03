@@ -155,6 +155,33 @@ filtering hidden files minus some pattern. In `ls`, `--hide` silently fails if p
 
 ## Extra features
 
+### `as_path`
+
+The `as_path` parameter (`--as-path` flag) gives the result back as a `pathlib.Path` type, Polars object
+dtype column 'path', instead of the name str type, Polars string dtype column 'name'. Obviously this
+makes no difference on the command line!
+
+```bash
+$ pols
+shape: (1, 1)
+┌──────┐
+│ name │
+│ ---  │
+│ str  │
+╞══════╡
+│ pols │
+└──────┘
+$ pols --as-path
+shape: (1, 1)
+┌────────┐
+│ path   │
+│ ---    │
+│ object │
+╞════════╡
+│ pols   │
+└────────┘
+```
+
 ### `drop_override` and `keep_override`
 
 As well as the `ls -l` style interface, the `drop_override` parameter (`--drop-override` in
