@@ -68,6 +68,8 @@ def pols(
     to_dicts: bool = False,
     raise_on_access: bool = False,
     debug: bool = False,
+    drop_override: str | None = None,
+    keep_override: str | None = None,
 ) -> pl.DataFrame:
     """
     List the contents of a directory as Polars DataFrame.
@@ -127,6 +129,12 @@ def pols(
           directory).
       [x] to_dicts: Return the result as dicts.
       [x] raise_on_access: Raise an error if a file cannot be accessed.
+      [x] debug: Print verbose report output when path walking directory descendants,
+                 and breakpoint on the final result after it is printed.
+      [x] drop_override: Comma-separated string of column names to keep (default: None,
+                         will not override standard list of columns to drop).
+      [x] keep_override: Comma-separated string of column names to keep (default: None,
+                         will not override standard list of columns to drop).
 
         >>> pls()
         shape: (77, 2)
@@ -149,6 +157,7 @@ def pols(
     # Handle short codes
     hide = hide or I
     hidden_files_allowed = A or a
+    implied_time_sort = (c or u) and ((not l) or (t and l))
     time_lookup = {
         **{k: "atime" for k in "atime access use".split()},
         **{k: "ctime" for k in "ctime status birth creation".split()},
@@ -167,12 +176,23 @@ def pols(
             f"{time!r} is not a valid time: must be one of {[*time_lookup]}",
         ) from exc
 
-    drop_cols = [
+    drop_cols_switched = [
         *([] if keep_path else ["path"]),
         *(["size"] if S else []),
+        *(["time"] if t or implied_time_sort else []),
         *([] if keep_fs_metadata else ["is_dir", "is_symlink"]),
         "rel_to",
     ]
+    drop_cols_kept = (
+        drop_cols_switched
+        if keep_override is None
+        else [k for k in drop_cols_switched if k not in keep_override.split(",")]
+    )
+    drop_cols = (
+        drop_cols_kept
+        if drop_override is None
+        else (drop_override.split(",") if drop_override else [])
+    )
 
     # Identify the files to operate on
     individual_files = []
@@ -263,7 +283,7 @@ def pols(
     # (unsure if there's a workaround using inspect?)
     sortable = {"sort", "S", "t", "v", "X"}
     # We also need `c` and `u` (which imply `t` sort unless with `l`)
-    if implied_time_sort := (c or u) and ((not l) or (t and l)):
+    if implied_time_sort:
         sortable = sortable.union({"c", "u"})
         sort_lookup.update({"c": "t", "u": "t"})
     # Take the flags and use their local values (i.e. parsed param values)
