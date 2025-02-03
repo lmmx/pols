@@ -67,8 +67,8 @@ def pols(
     # Rest are additions to the ls flags
     as_path: bool = False,
     keep_fs_metadata: bool = False,
-    print_to: TextIO | Literal["stdout", "stderr", "devnull"] = "stdout",
-    error_to: TextIO | Literal["stderr", "stdout", "devnull"] = "stderr",
+    print_to: TextIO | Literal["stdout", "stderr", "devnull"] | None = None,
+    error_to: TextIO | Literal["stderr", "stdout", "devnull"] | None = None,
     to_dict: bool = False,
     to_dicts: bool = False,
     raise_on_access: bool = False,
@@ -83,7 +83,7 @@ def pols(
     Args:
       [x] a: Do not ignore entries starting with `.`.
       [x] A: Do not list implied `.` and `..`.
-      [ ] author: With `l`, print the author of each file.
+      [x] author: With `l`, print the author of each file.
       [x] c: With `l` and `t` sort by, and show, ctime (time of last modification of file
          status information);
          with `l`: show ctime and sort by name;
@@ -162,9 +162,22 @@ def pols(
     - `S` flag does not seem to work correctly, change to a function and unpack paths
       manually to create new column with values.
     """
-    printer_lookup = {"stdout": stdout, "stderr": stderr, "devnull": devnull}
+    printer_lookup = {
+        "stdout": stdout,
+        "stderr": stderr,
+        "devnull": devnull,
+    }
+
     if isinstance(print_to, str):
         print_to = printer_lookup.get(print_to)
+    elif print_to is None:
+        print_to = stdout
+
+    if isinstance(error_to, str):
+        error_to = printer_lookup.get(error_to)
+    elif error_to is None:
+        error_to = stderr
+
     if to_dict and to_dicts:
         raise ValueError("Please pass only one of `to_dict` and `to_dicts`.")
     # Handle short codes
