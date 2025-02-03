@@ -11,6 +11,7 @@ import polars as pl
 
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
+from .features.S import add_size_column
 from .features.v import numeric_sort
 from .resegment import resegment_raw_path
 from .walk import flat_descendants
@@ -292,13 +293,6 @@ def pols(
                     sort_desc = True
                     sort_by = "size"
                     # Separate the size column computation from the sorting on it
-
-                    def add_size_column(files: pl.DataFrame):
-                        size_column = [
-                            p.stat().st_size for p in files.get_column("path")
-                        ]
-                        return files.with_columns(size=pl.Series(size_column))
-
                 case "t" | "u" | "c":
                     sort_by = "time"
                     sort_desc = True
