@@ -98,8 +98,8 @@ def pols(
          file the link references rather than for the link itself.
       [x] p: Append `/` indicator to directories.
       [x] r: Reverse order while sorting.
-      [ ] R: List directories recursively.
-      [ ] S: Sort by file size, largest first.
+      [x] R: List directories recursively.
+      [x] S: Sort by file size, largest first.
       [x] sort: sort by WORD instead of name: none (`U`), size (`S`), time (`t`), version
             (`v`), extension (`X`).
       [x] time: change  the default of using modification times:
@@ -290,6 +290,7 @@ def pols(
                     # `return_dtype` set as either int or pl.Int64 but works without!
                     # TODO: change this to a function
                     sort_by = pl.col("path").map_elements(lambda p: p.stat().st_size)
+                    sort_desc = True
                 case "t" | "u" | "c":
                     sort_by = "time"
                     sort_desc = True
