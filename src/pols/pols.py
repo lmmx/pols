@@ -31,7 +31,6 @@ def pols(
     *paths: tuple[str | Path],
     a: bool = False,
     A: bool = False,
-    author: bool = False,
     c: bool = False,
     d: bool = False,
     full_time: bool = False,
@@ -83,7 +82,6 @@ def pols(
     Args:
       [x] a: Do not ignore entries starting with `.`.
       [x] A: Do not list implied `.` and `..`.
-      [x] author: With `l`, print the author of each file.
       [x] c: With `l` and `t` sort by, and show, ctime (time of last modification of file
          status information);
          with `l`: show ctime and sort by name;
