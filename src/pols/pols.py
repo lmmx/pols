@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
 
 import polars as pl
 
-from .features.h import make_size_human_readable
+from .features.h_and_i import make_size_human_readable, make_size_si_unit
 from .features.hide import filter_out_pattern
 from .features.p import append_slash
 from .features.S import add_size_metadata
@@ -92,7 +92,7 @@ def pols(
                                disables grouping.
       [x] G: In a long listing, don't print group names.
       [X] h: With `l` and `s`, print sizes like 1K 234M 2G etc.
-      [ ] si: Like `h`, but use powers of 1000 not 1024.
+      [x] si: Like `h`, but use powers of 1000 not 1024.
       [ ] H: Follow symbolic links listed on the command line.
       [ ] dereference_command_line_symlink_to_dir: Follow each command line symbolic link
                                                that points to a directory.
@@ -158,6 +158,10 @@ def pols(
     - `S` flag does not seem to work correctly, change to a function and unpack paths
       manually to create new column with values.
     """
+    if si and h:
+        raise SystemExit(
+            "Cannot set both `h` and `si` (conflicting bases for file size)"
+        )
     printer_lookup = {
         "stdout": stdout,
         "stderr": stderr,
@@ -376,6 +380,7 @@ def pols(
         *([] if U else sort_pipes),
         # Post-sort
         *([make_size_human_readable] if h and (S or l) else []),
+        *([make_size_si_unit] if si and (S or l) else []),
     ]
 
     results = []
