@@ -74,6 +74,7 @@ def pols(
     drop_override: str | None = None,
     keep_override: str | None = None,
     merge_all: bool = False,
+    with_filter: str | None = None,
 ) -> pl.DataFrame:
     """
     List the contents of a directory as Polars DataFrame.
@@ -141,6 +142,11 @@ def pols(
       [x] merge_all: Merge all results into a single DataFrame with a column to preserve
                      their source directory (this is the empty string for individual files
                      or when there is only a single directory being listed).
+      [x] with_filter: Either a column name (must be present in the DataFrame or will
+                       fail) or a Polars `Expr`, or a string that evaluates to one.
+                       Implies `merge_all` (filtering unmerged DataFrames risks some
+                       source directory sources having 0 rows, raising an error when
+                       concatenated).
 
         >>> pls()
         shape: (77, 2)
@@ -158,6 +164,7 @@ def pols(
     - `S` flag does not seem to work correctly, change to a function and unpack paths
       manually to create new column with values.
     """
+    merge_all = with_filter is not None or merge_all  # with_filter implies merge_all
     if si and h:
         raise SystemExit(
             "Cannot set both `h` and `si` (conflicting bases for file size)"
@@ -485,6 +492,19 @@ def pols(
             merge_el_with_src = merge_el_df.with_columns(source=pl.lit(merge_el_source))
             merger.append(merge_el_with_src)
         merged = pl.concat(merger)
+        if with_filter is not None:
+            try:
+                merged = merged.filter(
+                    eval(with_filter)  # evaluate to Expr
+                    if (
+                        isinstance(with_filter, str)
+                        and with_filter not in merged.columns
+                    )
+                    else with_filter  # either Expr already or column name
+                )
+            except Exception as e:
+                filter_fail_msg = f"Filter {with_filter!r} failed, skipped"
+                raise ValueError(filter_fail_msg) from e
     if print_to != devnull:
         if merge_all:
             print(merged, file=print_to)
