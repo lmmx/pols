@@ -382,6 +382,7 @@ def pols(
         # Add symlink and directory bools from Path methods
         *([permissions_pipe, owner_group_pipe] if l else []),
         add_path_metadata,
+        *([add_symlink_targets] if l and not L else []),
         *([size_pipe] if S or l else []),
         *([time_pipe] if l or (t or implied_time_sort) else []),
         *([append_slash] if p else []),
@@ -578,4 +579,14 @@ def add_owner_group_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame
         group=pl.col("path").map_elements(
             lambda p: grp.getgrgid(p.stat().st_gid).gr_name, return_dtype=pl.Utf8
         ),
+    )
+
+
+def add_symlink_targets(files: pl.DataFrame) -> pl.DataFrame:
+    symlink_targets = [
+        p.readlink() if is_link else None
+        for p, is_link in zip(files.get_column("path"), files.get_column("is_symlink"))
+    ]
+    return files.with_columns(
+        symlink_target=pl.Series(symlink_targets, dtype=pl.Object)
     )
