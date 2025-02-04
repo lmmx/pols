@@ -1,5 +1,10 @@
 from __future__ import annotations
 
+import grp
+import pwd
+import stat
+from typing import Literal
+
 import polars as pl
 
 __all__ = (
@@ -14,8 +19,8 @@ __all__ = (
 
 
 def add_time_metadata(
-    files: pl.DataFrame, time_metric: Literal["atime", "ctime", "mtime"]
-) -> pl.DataFrame:
+    files: pl.LazyFrame, time_metric: Literal["atime", "ctime", "mtime"]
+) -> pl.LazyFrame:
     time_stat = f"st_{time_metric}"
     return files.with_columns(
         time=pl.col("path")
@@ -26,9 +31,9 @@ def add_time_metadata(
 
 
 def add_time_metadata_deref_symlinks(
-    files: pl.DataFrame,
+    files: pl.LazyFrame,
     time_metric: Literal["atime", "ctime", "mtime"],
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     time_stat = f"st_{time_metric}"
     return files.with_columns(
         time=pl.col("path")
@@ -38,7 +43,7 @@ def add_time_metadata_deref_symlinks(
     )
 
 
-def add_permissions_metadata(files: pl.DataFrame) -> pl.DataFrame:
+def add_permissions_metadata(files: pl.LazyFrame) -> pl.LazyFrame:
     def get_mode_string(path):
         mode = path.lstat().st_mode
         return stat.filemode(mode)
@@ -48,7 +53,7 @@ def add_permissions_metadata(files: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def add_permissions_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
+def add_permissions_metadata_deref_symlinks(files: pl.LazyFrame) -> pl.LazyFrame:
     def get_mode_string(path):
         mode = path.stat().st_mode
         return stat.filemode(mode)
@@ -58,7 +63,7 @@ def add_permissions_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame
     )
 
 
-def add_owner_group_metadata(files: pl.DataFrame) -> pl.DataFrame:
+def add_owner_group_metadata(files: pl.LazyFrame) -> pl.LazyFrame:
     return files.with_columns(
         owner=pl.col("path").map_elements(
             lambda p: pwd.getpwuid(p.lstat().st_uid).pw_name, return_dtype=pl.Utf8
@@ -69,7 +74,7 @@ def add_owner_group_metadata(files: pl.DataFrame) -> pl.DataFrame:
     )
 
 
-def add_owner_group_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame:
+def add_owner_group_metadata_deref_symlinks(files: pl.LazyFrame) -> pl.LazyFrame:
     return files.with_columns(
         owner=pl.col("path").map_elements(
             lambda p: pwd.getpwuid(p.stat().st_uid).pw_name, return_dtype=pl.Utf8
@@ -80,7 +85,7 @@ def add_owner_group_metadata_deref_symlinks(files: pl.DataFrame) -> pl.DataFrame
     )
 
 
-def add_symlink_targets(files: pl.DataFrame) -> pl.DataFrame:
+def add_symlink_targets(files: pl.LazyFrame) -> pl.LazyFrame:
     symlink_targets = [
         p.readlink() if is_link else None
         for p, is_link in zip(files.get_column("path"), files.get_column("is_symlink"))

@@ -46,28 +46,30 @@ def walk_root_rel_raw_paths(
     prefix = source.parts[0] if source.parts else ""
     return [
         [
-            re.sub(
-                pattern=f"^{re.escape(prefix)}",
-                repl=(
-                    source._raw_paths[0].removesuffix(os.path.sep)
-                    + (
-                        ""
-                        if source.parts  # Non-`.` (or equivalently) source path
-                        else (os.path.sep if source._raw_paths == ["."] else "")
-                    )
-                ),
-                string=(
-                    parent_dir._raw_paths[0]
-                    + (
-                        os.path.sep.join(["", *source._raw_paths[1:]])
-                        if source._raw_paths == parent_dir._raw_paths
-                        else ""
-                    )
-                ),
-                count=1,
+            (
+                re.sub(
+                    pattern=f"^{re.escape(prefix)}",
+                    repl=(
+                        source._raw_paths[0].removesuffix(os.path.sep)
+                        + (
+                            ""
+                            if source.parts  # Non-`.` (or equivalently) source path
+                            else (os.path.sep if source._raw_paths == ["."] else "")
+                        )
+                    ),
+                    string=(
+                        parent_dir._raw_paths[0]
+                        + (
+                            os.path.sep.join(["", *source._raw_paths[1:]])
+                            if source._raw_paths == parent_dir._raw_paths
+                            else ""
+                        )
+                    ),
+                    count=1,
+                )
+                if source._raw_paths and parent_dir._raw_paths != ["."]
+                else raw_path_item
             )
-            if source._raw_paths and parent_dir._raw_paths != ["."]
-            else raw_path_item
             for raw_path_item in parent_dir._raw_paths[:1]
         ]
         for parent_dir, _, _ in source.walk()
@@ -80,7 +82,7 @@ def walk_root_rel_raw_paths(
 
 if __name__ == "__main__":
     """The root has a `./` base directory which gets lost when normalised."""
-    Path(".")
+    root = Path(".")
 
     """The path repr, str, and parts all lack it."""
     [str(parent_dir) for parent_dir, _, _ in root.walk()]

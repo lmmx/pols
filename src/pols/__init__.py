@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-import grp
 import os.path
-import pwd
 import re
-import stat
 from functools import partial, reduce
+from io import TextIOWrapper
 from os import devnull
 from pathlib import Path
 from sys import argv, stderr, stdout
-from typing import TYPE_CHECKING, Callable, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
 import polars as pl
 
-from .features.common import add_path_metadata
+try:
+    from line_profiler import profile
+except ImportError:
+
+    def profile(func):
+        """No-op decorator if line_profiler is not available"""
+        return func
+
+
+from .features.common import add_path_metadata, sort_pipe
 from .features.h_and_i import make_size_human_readable, make_size_si_unit
 from .features.hide import filter_out_pattern
 from .features.l import (
@@ -31,12 +38,10 @@ from .features.v import numeric_sort
 from .resegment import resegment_raw_path
 from .walk import flat_descendants
 
-if TYPE_CHECKING:
-    import polars as pl
-
 TimeFormat: TypeAlias = str
 
 
+@profile
 def ls(
     *paths: tuple[str | Path],
     a: bool = False,
@@ -59,11 +64,9 @@ def ls(
     R: bool = False,
     S: bool = False,
     sort: Literal[None, "size", "time", "version", "extension"] = None,
-    time: (
-        Literal[
-            "atime", "access", "use", "ctime", "status", "birth", "creation", "mtime"
-        ]
-    ) = "mtime",
+    time: Literal[
+        "atime", "access", "use", "ctime", "status", "birth", "creation", "mtime"
+    ] = "mtime",
     time_style: (
         Literal["full-iso", "long-iso", "iso", "locale"] | TimeFormat
     ) = "locale",
@@ -74,8 +77,8 @@ def ls(
     t: bool = False,
     # Rest are additions to the ls flags
     as_path: bool = False,
-    print_to: TextIO | Literal["stdout", "stderr", "devnull"] | None = None,
-    error_to: TextIO | Literal["stderr", "stdout", "devnull"] | None = None,
+    print_to: TextIOWrapper | Literal["stdout", "stderr", "devnull"] | None = None,
+    error_to: TextIOWrapper | Literal["stderr", "stdout", "devnull"] | None = None,
     to_dict: bool = False,
     to_dicts: bool = False,
     raise_on_access: bool = False,
@@ -85,9 +88,9 @@ def ls(
     keep: str | None = None,
     merge_all: bool = False,
     with_filter: str | None = None,
-) -> pl.DataFrame:
+) -> pl.LazyFrame:
     """
-    List the contents of a directory as Polars DataFrame.
+    List the contents of a directory as Polars LazyFrame.
 
     Args:
       [x] a: Do not ignore entries starting with `.`.
@@ -149,12 +152,12 @@ def ls(
                          will not override standard list of columns to drop).
       [x] keep: Comma-separated string of column names to keep (default: None,
                          will not keep any of the standard list of columns to drop).
-      [x] merge_all: Merge all results into a single DataFrame with a column to preserve
+      [x] merge_all: Merge all results into a single LazyFrame with a column to preserve
                      their source directory (this is the empty string for individual files
                      or when there is only a single directory being listed).
-      [x] with_filter: Either a column name (must be present in the DataFrame or will
+      [x] with_filter: Either a column name (must be present in the LazyFrame or will
                        fail) or a Polars `Expr`, or a string that evaluates to one.
-                       Implies `merge_all` (filtering unmerged DataFrames risks some
+                       Implies `merge_all` (filtering unmerged LazyFrames risks some
                        source directory sources having 0 rows, raising an error when
                        concatenated).
 
@@ -256,10 +259,11 @@ def ls(
                     path = Path(*[re.sub(r"\*+", "*", part) for part in p.parts])
 
                 glob_base = Path(*[part for part in path.parts if "*" not in part])
-                glob_subpattern = str(path.relative_to(glob_base))
+                # glob_subpattern = str(path.relative_to(glob_base))
+                glob_subpattern = os.path.relpath(path, glob_base)
                 globbed_paths = list(glob_base.glob(glob_subpattern))
                 if not globbed_paths:
-                    raise FileNotFoundError(f"No such file or directory")
+                    raise FileNotFoundError("No such file or directory")
                 expanded_paths.extend(globbed_paths)
             else:
                 expanded_paths.append(path)
@@ -274,7 +278,7 @@ def ls(
     for path in expanded_paths:
         try:
             if not path.exists():
-                raise FileNotFoundError(f"No such file or directory")
+                raise FileNotFoundError("No such file or directory")
             is_file = path.is_file()
         except OSError as e:
             # This includes FileNotFoundError we threw as well as access errors
@@ -297,7 +301,7 @@ def ls(
                 )
             )
     if nonexistent:
-        excs = ExceptionGroup(f"No such file:", nonexistent)
+        excs = ExceptionGroup("No such file:", nonexistent)
         if raise_on_access:
             raise excs
         else:
@@ -372,17 +376,12 @@ def ls(
                 case _:
                     raise ValueError(f"Invalid flag in sort sequence {sort_flag}")
 
-            sort_func = lambda df: df.sort(
-                by=sort_by, maintain_order=True, descending=sort_desc
-            )
-            sort_pipes.append(sort_func)
+            sort_pipes.append(partial(sort_pipe, by=sort_by, descending=sort_desc))
     else:
-        lexico_sort = lambda df: df.sort(
-            by=pl.col("name").str.to_lowercase(), maintain_order=True
-        )
-        sort_pipes.append(lexico_sort)
+        lex_order = pl.col("name").str.to_lowercase()
+        sort_pipes.append(partial(sort_pipe, by=lex_order, descending=False))
     if r and not U:
-        sort_pipes.append(lambda df: df.reverse())
+        sort_pipes.append(pl.LazyFrame.reverse)
 
     if L:
         permissions_pipe = add_permissions_metadata_deref_symlinks
@@ -478,7 +477,7 @@ def ls(
                     "rel_to": dir_root,
                 }
                 file_entries.append(entry)
-            files = pl.DataFrame(
+            files = pl.LazyFrame(
                 file_entries,
                 schema={"path": pl.Object, "name": pl.String, "rel_to": pl.Object},
             )
@@ -490,13 +489,17 @@ def ls(
                 if error_to != devnull:
                     print(e, file=error_to)
             continue
-        path_set_result = reduce(pl.DataFrame.pipe, pipes, files).drop(drop_cols)
+        path_set_result = reduce(pl.LazyFrame.pipe, pipes, files).drop(drop_cols)
+
         source_string = (
             dir_root_s
             if (is_dot_rel and special_ss) or (not dir_root.name)
             else os.path.sep.join(drrp)
         )
-        results.append({source_string: path_set_result})
+        if merge_all:
+            results.append({source_string: path_set_result})
+        else:
+            results.append({source_string: path_set_result.collect()})
     if merge_all:
         merger = []
         for item in results:
@@ -517,6 +520,7 @@ def ls(
             except Exception as e:
                 filter_fail_msg = f"Filter {with_filter!r} failed, skipped"
                 raise ValueError(filter_fail_msg) from e
+        merged = merged.collect()
     if print_to != devnull:
         if merge_all:
             print(merged, file=print_to)

@@ -24,7 +24,7 @@ def format_size(size_expr, unit):
     )
 
 
-def scale_unit_size(files: pl.DataFrame, base: int) -> pl.DataFrame:
+def scale_unit_size(files: pl.LazyFrame, base: int) -> pl.LazyFrame:
     size_col = pl.col("size")
     kb = size_col.truediv(base)
     mb = size_col.truediv(base * base)
@@ -41,9 +41,9 @@ def scale_unit_size(files: pl.DataFrame, base: int) -> pl.DataFrame:
     )
 
 
-def make_size_si_unit(files: pl.DataFrame) -> pl.DataFrame:
+def make_size_si_unit(files: pl.LazyFrame) -> pl.LazyFrame:
     return scale_unit_size(files=files, base=1000)
 
 
-def make_size_human_readable(files: pl.DataFrame) -> pl.DataFrame:
+def make_size_human_readable(files: pl.LazyFrame) -> pl.LazyFrame:
     return scale_unit_size(files=files, base=1024)
