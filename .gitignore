@@ -10,3 +10,6 @@ wheels/
 .venv
 
 *.swp
+
+profile_output*.txt
+profile_output*.lprof
