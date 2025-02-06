@@ -178,6 +178,8 @@ def ls(
       manually to create new column with values.
     """
     merge_all = with_filter is not None or merge_all  # with_filter implies merge_all
+    if with_filter is None:
+        with_filter = True  # Will be removed automatically by the plan optimiser
     inspect = debug or inspect
     if si and h:
         raise SystemExit(
@@ -410,7 +412,7 @@ def ls(
         *([make_size_si_unit] if si and (S or l) else []),
     ]
 
-    results = []
+    results_rows = []
     failures = []
     for idx, path_set in enumerate((individual_files, *dirs_to_scan)):
         is_dir = idx > 0
@@ -479,65 +481,106 @@ def ls(
                 file_entries.append(entry)
             files = pl.LazyFrame(
                 file_entries,
-                schema={"path": pl.Object, "name": pl.String, "rel_to": pl.Object},
+                schema={
+                    "path": pl.Object,
+                    "name": pl.String,
+                    "rel_to": pl.Object,
+                },
             )
         except Exception as e:
-            failures.extend([ValueError(f"Got no files from {path_set} due to {e}"), e])
+            failures.append(ValueError(f"Got no files from {path_set} due to {e}"))
             if raise_on_access:
-                raise e
+                raise
             else:
                 if error_to != devnull:
                     print(e, file=error_to)
             continue
-        path_set_result = reduce(pl.LazyFrame.pipe, pipes, files).drop(drop_cols)
 
         source_string = (
             dir_root_s
             if (is_dot_rel and special_ss) or (not dir_root.name)
             else os.path.sep.join(drrp)
         )
-        if merge_all:
-            results.append({source_string: path_set_result})
-        else:
-            results.append({source_string: path_set_result.collect()})
+        path_set_result = (
+            reduce(pl.LazyFrame.pipe, pipes, files)
+            .drop(drop_cols)
+            .with_columns(source=pl.lit(source_string))
+        )
+
+        # Instead of returning it immediately or collecting, just store it
+        # in a row that includes the source
+        results_rows.append(
+            {
+                "source": source_string,
+                # Keep it as a LazyFrame so final merges can remain lazy
+                "result": path_set_result,
+            }
+        )
+
+    # Build a single DataFrame with an object column for the LazyFrames
+    df_of_results = pl.DataFrame(
+        results_rows, schema={"source": pl.String, "result": pl.Object}
+    )
+    # For later reference
+    result_columns = path_set_result.collect_schema()
+
+    # Filter can be a column or an Expr (if a string and not in schema, just eval it)
+    try:
+        if isinstance(with_filter, str) and with_filter not in result_columns:
+            with_filter = eval(with_filter)
+    except Exception as e:
+        filter_fail_msg = f"Filter {with_filter!r} failed to evaluate"
+        raise ValueError(filter_fail_msg) from e
+
+    # If we are merging them all into a single LazyFrame
     if merge_all:
-        merger = []
-        for item in results:
-            merge_el_source, merge_el_df = next(iter(item.items()))
-            merge_el_with_src = merge_el_df.with_columns(source=pl.lit(merge_el_source))
-            merger.append(merge_el_with_src)
-        merged = pl.concat(merger)
-        if with_filter is not None:
-            try:
-                merged = merged.filter(
-                    eval(with_filter)  # evaluate to Expr
-                    if (
-                        isinstance(with_filter, str)
-                        and with_filter not in merged.columns
-                    )
-                    else with_filter  # either Expr already or column name
-                )
-            except Exception as e:
-                filter_fail_msg = f"Filter {with_filter!r} failed, skipped"
-                raise ValueError(filter_fail_msg) from e
-        merged = merged.collect()
-    if print_to != devnull:
-        if merge_all:
+        # Concatenate all stored LazyFrames
+        # NOTE We implicitly discard the source col here but recall that it remains in
+        #      the result rows as `pl.lit`
+        merged = (
+            pl.concat(df_of_results.get_column("result")).filter(with_filter).collect()
+        )
+
+        if print_to != devnull:
             print(merged, file=print_to)
+
+        if to_dict:
+            result = {"": merged}
+        elif to_dicts:
+            result = [{"": merged}]
         else:
-            for result in results:
-                [(source, paths)] = result.items()
-                if source:
-                    print(f"{source}:", file=print_to)
-                print(paths, file=print_to)
+            result = None
+
+    else:
+        # Print or return them individually (the old “multi-dict” style replaced)
+        # but now each row in df_of_results has one “result”
+        for row in df_of_results.iter_rows(named=True):
+            source = row["source"]
+            lf = row["result"]  # This is our LazyFrame
+            # If needed, we can keep the same printing pattern:
+            if source:
+                print(f"{source}:", file=print_to)
+            df_ = lf.collect()
+            if print_to != devnull:
+                print(df_, file=print_to)
+
+        if to_dict:
+            # Return a dict from the final rows to match older behaviour
+            # but we no longer store the data in that form internally
+            result = {
+                row["source"]: row["result"].collect()
+                for row in df_of_results.iter_rows(named=True)
+            }
+        elif to_dicts:
+            # Similar for to_dicts
+            result = [
+                {row["source"]: row["result"].collect()}
+                for row in df_of_results.iter_rows(named=True)
+            ]
+        else:
+            result = None
+
     if inspect:
         breakpoint()
-    if to_dict:
-        if merge_all:
-            return {"": merged}
-        else:
-            return {source: df for res in results for source, df in res.items()}
-    elif to_dicts:
-        return results
-    else:
-        return None
+
+    return result

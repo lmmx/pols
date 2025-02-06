@@ -86,10 +86,9 @@ def add_owner_group_metadata_deref_symlinks(files: pl.LazyFrame) -> pl.LazyFrame
 
 
 def add_symlink_targets(files: pl.LazyFrame) -> pl.LazyFrame:
-    symlink_targets = [
-        p.readlink() if is_link else None
-        for p, is_link in zip(files.get_column("path"), files.get_column("is_symlink"))
-    ]
     return files.with_columns(
-        symlink_target=pl.Series(symlink_targets, dtype=pl.Object)
+        symlink_target=pl.col("path").map_elements(
+            lambda p: p.readlink() if p.is_symlink() else None
+        ),
+        return_dtype=pl.Object,
     )
