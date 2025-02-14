@@ -1,4 +1,4 @@
-# pols
+# polars-ls
 
 List directory contents as Polars DataFrames.
 
@@ -25,11 +25,11 @@ pathlib Path, it'll come back as "").
 ```python
 >>> cwd = Path.cwd()
 >>> cwd / "."
-PosixPath('/home/louis/dev/pols')
+PosixPath('/home/louis/dev/polars-ls')
 >>> cwd / ".."
-PosixPath('/home/louis/dev/pols/..')
+PosixPath('/home/louis/dev/polars-ls/..')
 >>> (cwd / ".").name
-'pols'
+'polars-ls'
 >>> (cwd / "..").name
 '..'
 >>> Path(".").name
@@ -286,7 +286,7 @@ shape: (1, 1)
 As the name suggests, all source directories get merged into a single DataFrame, which is printed as
 normal. The `source` column is added to preserve the directory each row came from.
 
-For example, here is the recursive listing of the `pols/src` path in this repo:
+For example, here is the recursive listing of the `src/pols` path in this repo:
 
 ```bash
 $ ls -R
