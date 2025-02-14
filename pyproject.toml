@@ -26,6 +26,10 @@ polars-lts-cpu = [
 polars = [
     "polars>=1.21.0",
 ]
+dev = [
+    "pdm>=2.22.3",
+    "pdm-bump>=0.9.10",
+]
 
 [build-system]
 requires = [
